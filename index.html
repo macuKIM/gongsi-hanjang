@@ -956,7 +956,7 @@ function renderList(filter){
     }).join("");
     const gcls=c.growth>=0?"up":"down";
     const gtxt=(c.growth>=0?"▲ ":"▼ ")+Math.abs(c.growth)+"%";
-    return `<div class="card fade" style="animation-delay:${i*0.05}s" onclick="openDetail('${c.code}')">
+    return `<div class="card fade" style="animation-delay:${i*0.05}s" onclick="loadLatestReport('','${c.name}','${c.code}','')">
       <div class="rank">${i+1}</div>
       <div class="cname">${c.name}</div>
       <div class="ccode">${c.code} · KOSPI</div>
@@ -1918,6 +1918,21 @@ async function searchDart(query, corpCode) {
    2-A. 기업 카드 클릭 → 최근 주요보고서 자동 선택 → 바로 AI 요약
         (사업보고서 > 반기보고서 > 분기보고서 > 최신 공시 순)
    ─────────────────────────────────────────────*/
+/* ── fetch with 45s timeout ── */
+async function fetchWithTimeout(url, timeoutMs = 45000) {
+  const ctrl = new AbortController();
+  const tid   = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(tid);
+    return res;
+  } catch(e) {
+    clearTimeout(tid);
+    if (e.name === 'AbortError') throw new Error('요청 시간 초과 (45초). 서버가 바쁘거나 API 키가 없을 수 있어요.');
+    throw e;
+  }
+}
+
 async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
   // 바로 요약 화면으로 전환 후 로딩 상태 표시
   show("disclosure-detail");
@@ -1929,7 +1944,7 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
   try {
     // ① corp_code 없으면 /api/companies로 정확하게 찾기
     if (!corpCode) {
-      const searchRes  = await fetch('/api/companies?name=' + encodeURIComponent(corpName));
+      const searchRes  = await fetchWithTimeout('/api/companies?name=' + encodeURIComponent(corpName));
       const searchList = await searchRes.json();
       if (Array.isArray(searchList) && searchList.length > 0) {
         const match = searchList.find(c => c.corp_name === corpName) || searchList[0];
@@ -1949,7 +1964,7 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
     document.getElementById("dd-title").textContent = corpName + ' — 최근 보고서 불러오는 중...';
 
     // ② corp_code로 공시 목록 조회
-    const res  = await fetch('/api/disclosures?corpCode=' + encodeURIComponent(corpCode));
+    const res  = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(corpCode));
     const data = await res.json();
 
     if (data.error || data.status !== '000' || !data.list || data.list.length === 0) {
@@ -1969,7 +1984,7 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
 
     // 주요 보고서 없으면 — 1년 전체 재조회 후 재탐색
     if (!target) {
-      const res2  = await fetch('/api/disclosures?corpCode=' + encodeURIComponent(corpCode) + '&months=12');
+      const res2  = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(corpCode) + '&months=12');
       const data2 = await res2.json();
       if (data2.status === '000' && data2.list) {
         for (const keyword of priority) {
@@ -2025,7 +2040,7 @@ function loadDisclosures(corpCode, corpName, stockCode, corpCls) {
 
 async function fetchDisclosures(corpCode) {
   try {
-    const res  = await fetch('/api/disclosures?corpCode=' + corpCode);
+    const res  = await fetchWithTimeout('/api/disclosures?corpCode=' + corpCode);
     const data = await res.json();
     if (data.error || data.status !== '000' || !data.list) {
       document.getElementById("dl-list").innerHTML = errBox('공시 목록을 불러오지 못했어요.');
