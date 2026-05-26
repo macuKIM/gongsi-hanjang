@@ -335,6 +335,33 @@
 
   .disclaimer{margin-top:28px; padding:12px 18px; background:var(--paper-2); border-radius:10px; font-size:12px; color:var(--ink-soft); text-align:center; border:1px solid var(--line); line-height:1.65;}
   html.dark .disclaimer{background:#1C1C1C; border-color:#2A2A2A; color:#777777;}
+
+  /* ── 기업 정보 버튼 (리포트 화면 우상단) ── */
+  .corp-info-btn {
+    position: absolute; top: 0; right: 0;
+    background: var(--paper); border: 1.5px solid var(--line);
+    border-radius: 12px; padding: 10px 14px;
+    text-align: right; cursor: pointer;
+    transition: .18s; max-width: 170px;
+    display: none;
+  }
+  .corp-info-btn:hover { border-color: var(--navy); box-shadow: 0 4px 14px rgba(0,0,0,.09); }
+  .corp-info-btn .cib-name { font-family: var(--serif); font-size: 14px; font-weight: 800; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .corp-info-btn .cib-code { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  html.dark .corp-info-btn { background: var(--paper-2); border-color: #3A3A3A; }
+  html.dark .corp-info-btn .cib-name { color: #F5F5F5; }
+  @media(max-width:480px){ .corp-info-btn { max-width: 120px; } .corp-info-btn .cib-name { font-size:12px; } }
+
+  /* DART 출처 텍스트 (검색창 위) */
+  .dart-source-label {
+    font-size: 12px; color: var(--ink-soft); margin-bottom: 10px;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .dart-source-label b { color: var(--gold); font-weight: 700; font-family: var(--serif); font-size: 13px; }
+
+  /* 정기공시 목록 */
+  .reg-disc-group-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold); text-transform: uppercase; margin: 26px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .reg-disc-group-title:first-child { margin-top: 0; }
   .fin-divider{margin-top:32px; padding-top:26px; border-top:2px dashed var(--line);}
   .fin-divider h4{font-family:var(--serif); font-size:17px; color:var(--navy); margin:22px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--line);}
   .fin-divider h4:first-child{margin-top:0;}
@@ -489,7 +516,14 @@
         <h1>이 회사,<br>대체 <em>뭐 하는 곳</em>일까?</h1>
         <p>사업보고서 200페이지를 다 읽을 필요 없어요.<br>핵심만 한 장으로 정리해 드립니다.</p>
       </div>
-      <div class="hero-search">
+      <div class="hero-search" style="margin-top:18px;">
+        <div class="dart-source-label">
+          <span>보고서를 요약합니다</span>
+          <span style="color:var(--line);">·</span>
+          <b>DART</b>
+          <span style="color:var(--line);">·</span>
+          <span>전자공시시스템</span>
+        </div>
         <div class="searchbar" style="position:relative;">
           <span class="ic">🔍</span>
           <input id="search" placeholder="회사 이름 검색 (예: 삼성, 카카오, LG)"
@@ -702,10 +736,15 @@
 <!-- ====== 공시 상세 · AI 요약 화면 ====== -->
 <main id="disclosure-detail" class="wrap" style="display:none; padding:30px 0 80px;">
   <button class="back" id="dd-back" onclick="showSection('disclosure-list')">← 공시 목록으로</button>
-  <div class="dhead" style="margin-bottom:28px;">
+  <div class="dhead" style="margin-bottom:28px; position:relative; padding-right:180px;">
     <span class="sector" style="background:var(--gold);color:#fff;">AI 요약</span>
     <h2 id="dd-title" style="font-size:clamp(18px,3vw,26px); margin-top:10px;"></h2>
     <div class="code" id="dd-meta"></div>
+    <!-- 기업 정보 버튼 (회사명+종목코드 클릭 → 정기공시 목록) -->
+    <button class="corp-info-btn" id="corp-info-btn" onclick="openRegularDisclosures()">
+      <div class="cib-name" id="cib-name">—</div>
+      <div class="cib-code" id="cib-code">—</div>
+    </button>
   </div>
 
   <!-- 로딩 상태 -->
@@ -717,6 +756,31 @@
 
   <!-- 요약 결과 -->
   <div id="dd-summary" style="display:none;"></div>
+</main>
+
+<!-- ====== 정기공시 목록 화면 ====== -->
+<main id="regular-disclosures" class="wrap" style="display:none; padding:30px 0 80px;">
+  <button class="back" onclick="showSection('disclosure-detail')">← 리포트로 돌아가기</button>
+  <div class="dhead" style="margin-bottom:28px;">
+    <span class="sector" id="rd-sector">정기공시</span>
+    <h2 id="rd-name" style="font-size:clamp(22px,4vw,34px);"></h2>
+    <div class="code" id="rd-code"></div>
+    <div class="summary-line" style="font-size:14px; border-left-color:var(--ink-soft); margin-top:14px;">
+      사업보고서 · 감사보고서 · 반기보고서 · 분기보고서 목록입니다. 클릭하면 AI가 요약해 드려요.
+    </div>
+  </div>
+  <div id="rd-loading" style="text-align:center; padding:40px 0; color:var(--ink-soft);">
+    <div style="font-size:32px; animation:spin 1.2s linear infinite; display:inline-block;">⏳</div>
+    <div style="margin-top:12px; font-size:15px;">공시 목록을 불러오는 중...</div>
+  </div>
+  <div id="rd-list" style="display:none;"></div>
+  <div id="rd-dart-link" style="margin-top:24px; text-align:center; display:none;">
+    <a id="rd-dart-href" href="#" target="_blank"
+       style="color:var(--ink-soft);font-size:13px;font-weight:600;text-decoration:none;
+              border:1px solid var(--line);border-radius:9px;padding:8px 16px;display:inline-block;">
+      📋 DART에서 모든 공시 직접 보기 →
+    </a>
+  </div>
 </main>
 
 <div class="toast" id="toast"></div>
@@ -979,7 +1043,7 @@ function filterList(v){ renderList(v); }
 /* =========================================================
    화면 전환
    ========================================================= */
-const ALL_SECTIONS = ["home","detail","deep","dart-results","disclosure-list","disclosure-detail"];
+const ALL_SECTIONS = ["home","detail","deep","dart-results","disclosure-list","disclosure-detail","regular-disclosures"];
 
 function show(id){
   ALL_SECTIONS.forEach(x=>{
@@ -1964,6 +2028,9 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
     dartState.currentCompany = { corpCode, corpName, stockCode, corpCls };
     document.getElementById("dd-title").textContent = corpName + ' — 최근 보고서 불러오는 중...';
 
+    // 기업 정보 버튼 업데이트
+    updateCorpInfoBtn(corpName, stockCode);
+
     // ② 사업보고서: 최근 3년 내 최신 → 없으면 반기(1년) → 없으면 분기(1년) → 없으면 AI 폴백
     function pickFromList(list, keyword) {
       const all  = list.filter(d => (d.report_nm || '').includes(keyword));
@@ -2256,19 +2323,25 @@ async function loadExpertSummary(rcptNo, title) {
 
 /* ── 일반인/전문가 탭 버튼 ── */
 function ensureSummaryTabs(rcptNo) {
-  if (document.getElementById("dd-tabbar")) return;
-  const tabBar = document.createElement('div');
-  tabBar.id = 'dd-tabbar'; tabBar.className = 'deeptabs';
-  tabBar.style.cssText = 'max-width:340px; margin:0 0 20px;';
-  tabBar.innerHTML = `
-    <button id="ddTab_g" class="on" onclick="switchSummaryTab('general')">
-      일반인용<span class="sub">핵심만 쉽게</span>
-    </button>
-    <button id="ddTab_e" onclick="switchSummaryTab('expert')">
-      전문가용<span class="sub">심층 분석</span>
-    </button>`;
-  const dhead = document.querySelector('#disclosure-detail .dhead');
-  if (dhead) dhead.insertAdjacentElement('afterend', tabBar);
+  if (!document.getElementById("dd-tabbar")) {
+    const tabBar = document.createElement('div');
+    tabBar.id = 'dd-tabbar'; tabBar.className = 'deeptabs';
+    tabBar.style.cssText = 'max-width:340px; margin:0 0 20px;';
+    tabBar.innerHTML = `
+      <button id="ddTab_g" class="on" onclick="switchSummaryTab('general')">
+        일반인용<span class="sub">핵심만 쉽게</span>
+      </button>
+      <button id="ddTab_e" onclick="switchSummaryTab('expert')">
+        전문가용<span class="sub">심층 분석</span>
+      </button>`;
+    const dhead = document.querySelector('#disclosure-detail .dhead');
+    if (dhead) dhead.insertAdjacentElement('afterend', tabBar);
+  }
+  // 항상 일반인용으로 초기화 (새 기업 로드 시 탭 리셋)
+  const tg = document.getElementById("ddTab_g");
+  const te = document.getElementById("ddTab_e");
+  if (tg) tg.classList.add('on');
+  if (te) te.classList.remove('on');
 }
 function switchSummaryTab(mode) {
   _summaryMode = mode;
@@ -2341,6 +2414,107 @@ function inlineMd(s) {
 
 function escHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ─────────────────────────────────────────────
+   기업 정보 버튼 — 우상단 회사명+종목코드
+   ─────────────────────────────────────────────*/
+function updateCorpInfoBtn(corpName, stockCode) {
+  const btn  = document.getElementById('corp-info-btn');
+  const name = document.getElementById('cib-name');
+  const code = document.getElementById('cib-code');
+  if (!btn) return;
+  if (corpName) {
+    name.textContent = corpName;
+    code.textContent = stockCode || '—';
+    btn.style.display = 'block';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+/* ─────────────────────────────────────────────
+   정기공시 목록 화면 (사업/감사/반기/분기보고서)
+   ─────────────────────────────────────────────*/
+const REGULAR_TYPES = ['사업보고서', '감사보고서', '반기보고서', '분기보고서'];
+
+async function openRegularDisclosures() {
+  const company = dartState.currentCompany;
+  if (!company || !company.corpCode) return;
+
+  show('regular-disclosures');
+  document.getElementById('rd-name').textContent  = company.corpName;
+  document.getElementById('rd-sector').textContent = MKT[company.corpCls] || '기업';
+  document.getElementById('rd-code').textContent   = company.stockCode || '비상장';
+  document.getElementById('rd-loading').style.display = 'block';
+  document.getElementById('rd-list').style.display    = 'none';
+  document.getElementById('rd-dart-link').style.display = 'none';
+
+  try {
+    // 최근 3년치 공시 조회 (사업보고서 포함)
+    const res  = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(company.corpCode) + '&months=36');
+    const data = await res.json();
+
+    document.getElementById('rd-loading').style.display = 'none';
+    document.getElementById('rd-list').style.display    = 'block';
+
+    if (data.error || data.status !== '000' || !data.list || data.list.length === 0) {
+      document.getElementById('rd-list').innerHTML =
+        '<div style="color:var(--ink-soft);padding:20px 0;">최근 3년간 정기공시가 없어요.</div>';
+      return;
+    }
+
+    // 정기공시만 필터 (사업/감사/반기/분기보고서)
+    const filtered = data.list.filter(d =>
+      REGULAR_TYPES.some(t => (d.report_nm || '').includes(t))
+    );
+
+    if (filtered.length === 0) {
+      document.getElementById('rd-list').innerHTML =
+        '<div style="color:var(--ink-soft);padding:20px 0;">정기공시(사업·감사·반기·분기보고서)가 없어요.<br>' +
+        '<a href="https://dart.fss.or.kr/corp/searchCorpInfo.do?textCrpNm=' + encodeURIComponent(company.corpName) +
+        '" target="_blank" style="color:var(--gold);">DART에서 직접 확인 →</a></div>';
+      return;
+    }
+
+    // 타입별 그루핑
+    const grouped = {};
+    REGULAR_TYPES.forEach(t => { grouped[t] = []; });
+    filtered.forEach(d => {
+      const type = REGULAR_TYPES.find(t => (d.report_nm || '').includes(t));
+      if (type) grouped[type].push(d);
+    });
+
+    let html = '';
+    REGULAR_TYPES.forEach(type => {
+      const items = grouped[type];
+      if (!items.length) return;
+      html += `<div class="reg-disc-group-title">${type}</div>`;
+      html += items.map(d => {
+        const safeTitle = (d.report_nm || '').replace(/"/g, '&quot;');
+        const safeFlr   = (d.flr_nm   || '').replace(/"/g, '&quot;');
+        return `<div class="disclosure-card"
+          onclick='showSection("disclosure-detail"); loadSummary("${d.rcept_no}","${safeTitle}","${d.rcept_dt||''}","${safeFlr}")'>
+          <div class="d-title">${d.report_nm}</div>
+          <div class="d-meta">${fmtDate(d.rcept_dt)} &nbsp;·&nbsp; 제출인: ${d.flr_nm}</div>
+          <div class="d-cta">✨ AI 요약 보기 →</div>
+        </div>`;
+      }).join('');
+    });
+
+    document.getElementById('rd-list').innerHTML = html;
+
+    // DART 원문 링크
+    const dartLink = document.getElementById('rd-dart-link');
+    const dartHref = document.getElementById('rd-dart-href');
+    dartHref.href = 'https://dart.fss.or.kr/corp/searchCorpInfo.do?textCrpNm=' + encodeURIComponent(company.corpName);
+    dartLink.style.display = 'block';
+
+  } catch(err) {
+    document.getElementById('rd-loading').style.display = 'none';
+    document.getElementById('rd-list').style.display    = 'block';
+    document.getElementById('rd-list').innerHTML = errBox('공시 목록 오류: ' + err.message);
+  }
 }
 
 /* ── 시작 ── */
