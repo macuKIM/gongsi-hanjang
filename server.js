@@ -405,7 +405,7 @@ app.get('/api/search', async (req, res) => {
     oneYearAgo.setFullYear(today.getFullYear() - 1);
     params = { crtfc_key: DART_API_KEY, corp_code: corpCode,
                bgn_de: yyyymmdd(oneYearAgo), end_de: yyyymmdd(today),
-               sort: 'date', sort_mth: 'desc', page_count: 30 };
+               sort: 'date', sort_mth: 'desc', page_count: pageCount };
   } else {
     const threeMonthsAgo = new Date(today);
     threeMonthsAgo.setMonth(today.getMonth() - 3);
@@ -427,7 +427,8 @@ app.get('/api/search', async (req, res) => {
 // ─────────────────────────────────────────────────────────
 app.get('/api/disclosures', async (req, res) => {
   const corpCode = (req.query.corpCode || '').trim();
-  const months   = parseInt(req.query.months || '3', 10);  // 기본 3개월, 1년치는 12 전달
+  const months    = parseInt(req.query.months     || '3',   10);  // 기본 3개월
+  const pageCount = parseInt(req.query.page_count || '100', 10);  // 기본 100 (DART 최대)
   if (!corpCode) return res.status(400).json({ error: 'corpCode가 필요해요.' });
 
   const today   = new Date();

@@ -464,9 +464,7 @@
 
 </style>
 
-<div class="demo-banner">
-  ✅ <b>DART API 연동</b> — 검색창에 회사명을 입력하고 <b>Enter</b>를 누르면 실시간으로 공시를 가져와 AI가 요약해 드립니다. &nbsp;|&nbsp; 아래 인기 기업 카드는 데모 예시입니다.
-</div>
+
 
 <header class="mast">
   <div class="wrap mast-inner">
@@ -724,7 +722,7 @@
 <div class="toast" id="toast"></div>
 
 <footer class="wrap">
-  공시한장 · 한 장으로 읽는 기업 공시 &nbsp;|&nbsp; 데모 프로토타입<br>
+  <span style="font-size:15px;font-weight:600;color:var(--ink);">공시한장</span> &nbsp;·&nbsp; 한 장으로 읽는 기업 공시<br>
   <span style="display:inline-block;margin-top:6px;">문의 &nbsp;<a href="mailto:ckswnd0131@gmail.com" style="color:var(--gold-soft);text-decoration:none;">ckswnd0131@gmail.com</a></span>
 </footer>
 
@@ -1966,39 +1964,32 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
     dartState.currentCompany = { corpCode, corpName, stockCode, corpCls };
     document.getElementById("dd-title").textContent = corpName + ' — 최근 보고서 불러오는 중...';
 
-    // ② corp_code로 공시 목록 조회
-    const res  = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(corpCode));
-    const data = await res.json();
-
-    if (data.error || data.status !== '000' || !data.list || data.list.length === 0) {
-      document.getElementById("dd-loading").style.display = "none";
-      document.getElementById("dd-summary").style.display  = "block";
-      document.getElementById("dd-summary").innerHTML = errBox('공시 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
-      return;
+    // ② 사업보고서: 최근 3년 내 최신 → 없으면 반기(1년) → 없으면 분기(1년) → 없으면 AI 폴백
+    function pickFromList(list, keyword) {
+      const all  = list.filter(d => (d.report_nm || '').includes(keyword));
+      if (!all.length) return [];
+      const orig = all.filter(d => !d.report_nm.startsWith('['));
+      return (orig.length ? orig : all).slice(0, 5);
     }
 
-    // ③ 우선순위: 사업보고서 > 반기보고서 > 분기보고서
-    //    [첨부정정] 은 원본보다 후순위, 복수 후보 저장해 실패 시 재시도
-    const priority = ['사업보고서', '반기보고서', '분기보고서'];
-    function pickCandidates(list) {
-      for (const kw of priority) {
-        const all  = list.filter(d => (d.report_nm || '').includes(kw));
-        if (!all.length) continue;
-        const orig = all.filter(d => !d.report_nm.startsWith('['));
-        return (orig.length ? orig : all).slice(0, 5);
-      }
-      return [];
-    }
-    let candidates = pickCandidates(data.list);
+    // ③-A 사업보고서: 최근 3년(36개월) 검색
+    let candidates = [];
+    const r사업 = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(corpCode) + '&months=36');
+    const d사업 = await r사업.json();
+    if (d사업.status === '000' && d사업.list) candidates = pickFromList(d사업.list, '사업보고서');
 
-    // 3개월 이내 없으면 — 1년 전체 재조회
+    // ③-B 반기보고서: 최근 1년 검색
     if (!candidates.length) {
-      const res2  = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(corpCode) + '&months=12');
-      const data2 = await res2.json();
-      if (data2.status === '000' && data2.list) candidates = pickCandidates(data2.list);
+      const r반기 = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(corpCode) + '&months=12');
+      const d반기 = await r반기.json();
+      if (d반기.status === '000' && d반기.list) candidates = pickFromList(d반기.list, '반기보고서');
+
+      // ③-C 분기보고서: 같은 결과에서 확인
+      if (!candidates.length && d반기.status === '000' && d반기.list)
+        candidates = pickFromList(d반기.list, '분기보고서');
     }
 
-    // 1년치에도 없으면 — Gemini 일반지식 요약 시도
+    // ③-D 없으면 — Gemini 일반지식 요약
     if (!candidates.length) {
       loadNoReportSummary(corpCode, corpName);
       return;
