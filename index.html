@@ -51,9 +51,11 @@
 
   /* ---------- 히어로 ---------- */
   .hero{padding:40px 0 26px; border-bottom:1px solid var(--line);}
-  .hero-inner{display:flex; align-items:center; justify-content:space-between; gap:40px; flex-wrap:wrap;}
+  /* align-items:stretch → 두 열이 같은 높이가 되어 flex 정렬 가능 */
+  .hero-inner{display:flex; align-items:stretch; justify-content:space-between; gap:40px; flex-wrap:wrap;}
   .hero-text{flex:1; min-width:270px;}
-  .hero-search{flex:0 0 320px; min-width:250px;}
+  /* 오른쪽 열: 세로 flex — DART 레이블 위, 검색창 아래 */
+  .hero-search{flex:0 0 320px; min-width:250px; display:flex; flex-direction:column; justify-content:space-between;}
   .hero .kick{font-size:12px; letter-spacing:3px; color:var(--gold); font-weight:700; text-transform:uppercase;}
   .hero h1{font-family:var(--serif); font-weight:900; font-size:clamp(28px,5vw,50px); line-height:1.08; letter-spacing:-1px; margin:12px 0 14px; color:var(--navy);}
   .hero h1 em{font-style:normal; color:var(--up);}
@@ -259,8 +261,10 @@
   /* 히어로 — 모바일에서 세로 스택 */
   @media(max-width:620px){
     .hero{padding:28px 0 22px;}
-    .hero-inner{gap:22px;}
-    .hero-search{flex:0 0 100%;}
+    .hero-inner{gap:22px; align-items:flex-start;}
+    /* 모바일: hero-search도 세로로 쌓임, flex-column 유지 but 높이 auto */
+    .hero-search{flex:0 0 100%; justify-content:flex-start; gap:10px;}
+    .dart-source-label{justify-content:flex-start;}
     .hero h1{font-size:30px; margin:10px 0 12px;}
     .hero p{font-size:14.5px;}
   }
@@ -336,28 +340,30 @@
   .disclaimer{margin-top:28px; padding:12px 18px; background:var(--paper-2); border-radius:10px; font-size:12px; color:var(--ink-soft); text-align:center; border:1px solid var(--line); line-height:1.65;}
   html.dark .disclaimer{background:#1C1C1C; border-color:#2A2A2A; color:#777777;}
 
-  /* ── 기업 정보 버튼 (리포트 화면 우상단) ── */
+  /* ── 기업 정보 버튼 (리포트 화면 우하단 — 구분선에 붙여서) ── */
   .corp-info-btn {
-    position: absolute; top: 0; right: 0;
+    position: absolute; bottom: 0; right: 0;
     background: var(--paper); border: 1.5px solid var(--line);
-    border-radius: 12px; padding: 10px 14px;
+    border-radius: 14px; padding: 13px 18px;
     text-align: right; cursor: pointer;
-    transition: .18s; max-width: 170px;
+    transition: .18s; max-width: 220px;
     display: none;
   }
-  .corp-info-btn:hover { border-color: var(--navy); box-shadow: 0 4px 14px rgba(0,0,0,.09); }
-  .corp-info-btn .cib-name { font-family: var(--serif); font-size: 14px; font-weight: 800; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .corp-info-btn .cib-code { font-size: 11px; color: var(--ink-soft); margin-top: 2px; }
+  .corp-info-btn:hover { border-color: var(--navy); box-shadow: 0 6px 18px rgba(0,0,0,.11); transform:translateY(-2px); }
+  .corp-info-btn .cib-name { font-family: var(--serif); font-size: 18px; font-weight: 900; color: var(--navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing:-.3px; }
+  .corp-info-btn .cib-code { font-size: 13px; color: var(--ink-soft); margin-top: 3px; font-family: 'Inter', monospace; }
   html.dark .corp-info-btn { background: var(--paper-2); border-color: #3A3A3A; }
   html.dark .corp-info-btn .cib-name { color: #F5F5F5; }
-  @media(max-width:480px){ .corp-info-btn { max-width: 120px; } .corp-info-btn .cib-name { font-size:12px; } }
+  @media(max-width:620px){ .corp-info-btn { max-width:150px; } .corp-info-btn .cib-name { font-size:15px; } }
+  @media(max-width:480px){ .corp-info-btn { display:none !important; } }
 
-  /* DART 출처 텍스트 (검색창 위) */
+  /* DART 출처 텍스트 (검색창 위 — kick과 같은 레벨) */
   .dart-source-label {
-    font-size: 12px; color: var(--ink-soft); margin-bottom: 10px;
-    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--ink-soft);
+    display: flex; align-items: center; gap: 7px;
+    justify-content: flex-end;
   }
-  .dart-source-label b { color: var(--gold); font-weight: 700; font-family: var(--serif); font-size: 13px; }
+  .dart-source-label b { color: var(--gold); font-weight: 800; font-family: var(--serif); font-size: 15px; letter-spacing:-.3px; }
 
   /* 정기공시 목록 */
   .reg-disc-group-title { font-size: 11px; font-weight: 700; letter-spacing: 1.5px; color: var(--gold); text-transform: uppercase; margin: 26px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
@@ -516,12 +522,12 @@
         <h1>이 회사,<br>대체 <em>뭐 하는 곳</em>일까?</h1>
         <p>사업보고서 200페이지를 다 읽을 필요 없어요.<br>핵심만 한 장으로 정리해 드립니다.</p>
       </div>
-      <div class="hero-search" style="margin-top:18px;">
+      <div class="hero-search">
         <div class="dart-source-label">
           <span>보고서를 요약합니다</span>
-          <span style="color:var(--line);">·</span>
+          <span style="opacity:.35;">·</span>
           <b>DART</b>
-          <span style="color:var(--line);">·</span>
+          <span style="opacity:.35;">·</span>
           <span>전자공시시스템</span>
         </div>
         <div class="searchbar" style="position:relative;">

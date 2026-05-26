@@ -517,16 +517,33 @@ app.get('/api/summarize', async (req, res) => {
         if (content.includes('')) content = iconv.decode(buf, 'euc-kr');
       } catch { content = buf.toString('utf-8'); }
 
-      rawText += content
+      // 테이블 구조 보존: tr → 줄바꿈, td/th → 탭 구분
+      let c = content
         .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?<\/style>/gi,  '')
+        .replace(/<style[\s\S]*?<\/style>/gi,  '');
+      // 테이블 셀을 탭으로, 행을 줄바꿈으로
+      c = c
+        .replace(/<\/tr>/gi, '\n')
+        .replace(/<tr[^>]*>/gi, '')
+        .replace(/<\/t[hd]>/gi, '\t')
+        .replace(/<t[hd][^>]*>/gi, '')
         .replace(/<[^>]+>/g, ' ')
         .replace(/&nbsp;/g,' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')
-        .replace(/\s{2,}/g,' ').trim() + '\n\n';
+        .replace(/\t[ \t]+/g,'\t').replace(/[ ]{3,}/g,' ')
+        .replace(/\n{3,}/g,'\n\n').trim();
+      rawText += c + '\n\n';
     }
 
-    const MAX  = mode === 'expert' ? 15000 : 12000;
-    docText    = rawText.length > MAX ? rawText.slice(0, MAX) + '\n\n[... 이하 생략 ...]' : rawText;
+    // 재무제표는 문서 뒷부분에 있으므로 앞 + 뒤를 모두 포함
+    const MAX_FRONT = mode === 'expert' ? 18000 : 14000;
+    const MAX_BACK  = mode === 'expert' ?  8000 :  6000;
+    if (rawText.length > MAX_FRONT + MAX_BACK) {
+      docText = rawText.slice(0, MAX_FRONT) +
+                '\n\n[... 중략 ...]\n\n' +
+                rawText.slice(rawText.length - MAX_BACK);
+    } else {
+      docText = rawText;
+    }
 
     if (!docText.trim()) return res.status(422).json({ error: '텍스트 추출 실패' });
 
@@ -544,7 +561,7 @@ app.get('/api/summarize', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: 4096 }
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 }
     });
 
     const userMsg = `다음 사업보고서를 분석하여 ${mode === 'expert' ? '전문가용 HTML' : '일반인용 JSON'} 리포트를 작성해주세요.
