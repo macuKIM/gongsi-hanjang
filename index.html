@@ -1984,9 +1984,7 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
       document.getElementById("dd-loading").style.display = "none";
       document.getElementById("dd-summary").style.display  = "block";
       document.getElementById("dd-summary").innerHTML = errBox(
-        '📋 최근 1년간 사업보고서 · 반기보고서 · 분기보고서가 없어요.<br>' +
-        '<small>비상장사이거나 보고서 제출 시기가 아닐 수 있어요.<br>' +
-        '공시 목록에서 직접 선택하려면 <a href="#" onclick="loadDisclosures('' + corpCode + '','' + (corpName||'').replace(/'/g,"\'") + '','' + (stockCode||'') + '','' + (corpCls||'') + '');return false;">여기를 클릭</a>하세요.</small>'
+        '📋 최근 1년간 사업보고서 · 반기보고서 · 분기보고서가 없어요.<br><small>비상장사이거나 보고서 제출 시기가 아닐 수 있어요.</small>'
       );
       return;
     }
