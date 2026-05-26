@@ -51,11 +51,14 @@ app.get('/api/test', async (req, res) => {
       timeout: 10000,
     });
     res.json({
-      ok        : data.status === '000',
-      corp_name : data.corp_name,
-      corp_code : data.corp_code,
-      elapsed_ms: Date.now() - t0,
-      region    : process.env.VERCEL_REGION || process.env.AWS_REGION || 'unknown',
+      ok         : data.status === '000',
+      dart_status: data.status,
+      dart_msg   : data.message,
+      corp_name  : data.corp_name,
+      corp_code  : data.corp_code,
+      elapsed_ms : Date.now() - t0,
+      region     : process.env.VERCEL_REGION || process.env.AWS_REGION || 'unknown',
+      dart_key_ok: !!DART_API_KEY,
     });
   } catch(e) {
     res.json({ ok: false, error: e.message, elapsed_ms: Date.now() - t0 });
@@ -331,19 +334,29 @@ app.get('/api/companies', async (req, res) => {
   if (!DART_API_KEY) return res.status(500).json({ error: 'DART_API_KEY가 설정되지 않았습니다.' });
 
   try {
-    // ── ① 최우선: stock_code → company.json (0.5초, 가장 정확) ─
-    if (stockCode && stockCode.length === 6) {
+    // ── ① 최우선: stock_code + 이름 앞글자로 list.json 검색 후 stock_code 필터 ─
+    //    DART에 stock_code→corp_code 직접 API 없음 → 이름 2글자 prefix + stock_code 매칭
+    if (stockCode && stockCode.length === 6 && name) {
       try {
-        const { data } = await axios.get('https://opendart.fss.or.kr/api/company.json', {
-          params: { crtfc_key: DART_API_KEY, stock_code: stockCode },
-          timeout: 5000,
-        });
-        if (data.status === '000' && data.corp_code) {
-          console.log('[/api/companies stock_code]', stockCode, '=>', data.corp_name, data.corp_code);
-          return res.json([{ corp_code: data.corp_code, corp_name: data.corp_name, stock_code: data.stock_code }]);
+        // 이름 앞 2~3글자로 넓게 검색 → stock_code 일치 항목 추출
+        const prefix = name.slice(0, name.length >= 3 ? 3 : 2);
+        const quick  = await quickCorpLookup(prefix);
+        const match  = quick.find(c => c.stock_code === stockCode);
+        if (match) {
+          console.log('[/api/companies stock_code match]', stockCode, '=>', match.corp_name, match.corp_code);
+          return res.json([match]);
+        }
+        // prefix 검색에 없으면 2글자로 재시도 (예: '현대차' → '현대' 검색)
+        if (prefix.length > 2) {
+          const quick2 = await quickCorpLookup(name.slice(0, 2));
+          const match2 = quick2.find(c => c.stock_code === stockCode);
+          if (match2) {
+            console.log('[/api/companies stock_code match2]', stockCode, '=>', match2.corp_name, match2.corp_code);
+            return res.json([match2]);
+          }
         }
       } catch (e) {
-        console.warn('[/api/companies stock_code] 실패:', e.message);
+        console.warn('[/api/companies stock_code prefix] 실패:', e.message);
       }
     }
 
@@ -463,7 +476,13 @@ app.get('/api/summarize', async (req, res) => {
       responseType: 'arraybuffer', timeout: 30000
     });
 
-    const zip = new AdmZip(Buffer.from(docRes.data));
+    // ZIP 매직바이트 검증 (PK\x03\x04)
+    const docBuf = Buffer.from(docRes.data);
+    if (docBuf.length < 4 || docBuf[0] !== 0x50 || docBuf[1] !== 0x4B) {
+      const preview = docBuf.toString('utf-8').slice(0, 120).replace(/[\r\n]+/g,' ');
+      throw new Error('ZIP 형식 아님 — DART가 오류 페이지를 반환했을 수 있어요: ' + preview);
+    }
+    const zip = new AdmZip(docBuf);
     let rawText = '';
     for (const entry of zip.getEntries()) {
       if (entry.isDirectory) continue;
@@ -531,6 +550,67 @@ ${docText}`;
     res.status(500).json({ error: 'AI 요약 오류', detail: err.message });
   }
 });
+
+// ─────────────────────────────────────────────────────────
+// 4. 보고서 없는 기업 — Gemini 일반지식 요약
+//    DART 문서 없이 회사명만으로 간단 요약 생성
+// ─────────────────────────────────────────────────────────
+app.get('/api/no-report-summary', async (req, res) => {
+  const corpName = (req.query.corpName || '').trim();
+  if (!corpName) return res.status(400).json({ error: '기업명이 필요해요.' });
+  if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY 미설정' });
+
+  const cacheKey = 'noreport_' + corpName + '_general';
+  const cached = getFromCache(cacheKey);
+  if (cached) {
+    console.log('[/api/no-report-summary] 캐시 히트:', corpName);
+    return res.json({ data: cached, fromCache: true, noReport: true });
+  }
+
+  console.log('[/api/no-report-summary] Gemini 일반지식 요약:', corpName);
+  try {
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash',
+      systemInstruction: `당신은 기업 분석 AI입니다.
+DART 공시 원문 없이 학습 데이터만으로 기업 개요를 작성합니다.
+반드시 JSON만 출력하세요. 마크다운 코드블록 금지.
+모르는 내용은 추측하지 말고 "정보 없음"으로 표시하세요.`,
+      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
+    });
+
+    const prompt = `${corpName}에 대해 알고 있는 정보로 아래 JSON 형식으로 작성해주세요.
+공시 원문이 없으므로 재무 수치는 최대한 정확하게 기재하되 불확실하면 "확인필요"로 표시하세요.
+
+{
+  "lead": "한 문장 기업 소개 (50자 내외)",
+  "structure": ["사업 구조 문단 1", "사업 구조 문단 2"],
+  "growth": ["성장 포인트 1", "성장 포인트 2"],
+  "risk": ["리스크 1", "리스크 2", "리스크 3"],
+  "verdict": "한 줄 결론 (40자 내외)",
+  "fin": [
+    ["구분", "최근 연도(추정)"],
+    ["매출액", "확인필요"],
+    ["영업이익", "확인필요"],
+    ["영업이익률", "확인필요"],
+    ["당기순이익", "확인필요"]
+  ],
+  "notes": ["⚠️ 공시 원문 미확인 — AI 학습 데이터 기반 요약입니다. 투자 결정 전 반드시 DART 원문을 확인하세요."],
+  "audit": "공시 원문 없음 — 감사 정보를 확인할 수 없습니다."
+}`;
+
+    const result = await model.generateContent(prompt);
+    let output = result.response.text()
+      .replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim();
+
+    saveToCache(cacheKey, output, { corpName });
+    res.json({ data: output, fromCache: false, noReport: true });
+  } catch(err) {
+    console.error('[/api/no-report-summary] 오류:', err.message);
+    res.status(500).json({ error: 'AI 요약 오류', detail: err.message });
+  }
+});
+
 
 // ── 캐시 현황 조회 (개발/운영 확인용)  GET /api/cache-stats
 app.get('/api/cache-stats', (req, res) => {

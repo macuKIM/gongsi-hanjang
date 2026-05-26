@@ -1978,37 +1978,34 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
     }
 
     // ③ 우선순위: 사업보고서 > 반기보고서 > 분기보고서
+    //    [첨부정정] 은 원본보다 후순위, 복수 후보 저장해 실패 시 재시도
     const priority = ['사업보고서', '반기보고서', '분기보고서'];
-    let target = null;
-    for (const keyword of priority) {
-      target = data.list.find(d => (d.report_nm || '').includes(keyword));
-      if (target) break;
+    function pickCandidates(list) {
+      for (const kw of priority) {
+        const all  = list.filter(d => (d.report_nm || '').includes(kw));
+        if (!all.length) continue;
+        const orig = all.filter(d => !d.report_nm.startsWith('['));
+        return (orig.length ? orig : all).slice(0, 5);
+      }
+      return [];
     }
+    let candidates = pickCandidates(data.list);
 
-    // 주요 보고서 없으면 — 1년 전체 재조회 후 재탐색
-    if (!target) {
+    // 3개월 이내 없으면 — 1년 전체 재조회
+    if (!candidates.length) {
       const res2  = await fetchWithTimeout('/api/disclosures?corpCode=' + encodeURIComponent(corpCode) + '&months=12');
       const data2 = await res2.json();
-      if (data2.status === '000' && data2.list) {
-        for (const keyword of priority) {
-          target = data2.list.find(d => (d.report_nm || '').includes(keyword));
-          if (target) break;
-        }
-      }
+      if (data2.status === '000' && data2.list) candidates = pickCandidates(data2.list);
     }
 
-    // 1년치에도 주요 보고서 없으면 안내 메시지
-    if (!target) {
-      document.getElementById("dd-loading").style.display = "none";
-      document.getElementById("dd-summary").style.display  = "block";
-      document.getElementById("dd-summary").innerHTML = errBox(
-        '📋 최근 1년간 사업보고서 · 반기보고서 · 분기보고서가 없어요.<br><small>비상장사이거나 보고서 제출 시기가 아닐 수 있어요.</small>'
-      );
+    // 1년치에도 없으면 — Gemini 일반지식 요약 시도
+    if (!candidates.length) {
+      loadNoReportSummary(corpCode, corpName);
       return;
     }
 
-    // ④ 바로 AI 요약
-    loadSummary(target.rcept_no, target.report_nm, target.rcept_dt, target.flr_nm);
+    // ④ 바로 AI 요약 (실패 시 candidates 배열에서 자동 재시도)
+    loadSummary(candidates[0].rcept_no, candidates[0].report_nm, candidates[0].rcept_dt, candidates[0].flr_nm, candidates.slice(1));
 
   } catch(err) {
     document.getElementById("dd-loading").style.display = "none";
@@ -2081,7 +2078,7 @@ let _summaryMode   = 'general';
 let _currentRcptNo = null;
 let _currentTitle  = null;
 
-async function loadSummary(rcptNo, title, date, submitter) {
+async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
   /* ── 무료 이용권 체크 ── */
   const alreadySeen = hasViewed(rcptNo);
   if (!alreadySeen && getFreeLeft() <= 0) {
@@ -2130,12 +2127,56 @@ async function loadSummary(rcptNo, title, date, submitter) {
     if (!alreadySeen) markViewed(rcptNo);
 
   } catch(err) {
+    // ZIP 오류 등 문서 문제 → 다음 후보 자동 재시도
+    if (_candidates.length > 0) {
+      console.warn('[loadSummary] 실패, 다음 후보 시도:', _candidates[0].report_nm, err.message);
+      loadSummary(_candidates[0].rcept_no, _candidates[0].report_nm, _candidates[0].rcept_dt, _candidates[0].flr_nm, _candidates.slice(1));
+      return;
+    }
     document.getElementById("dd-loading").style.display = "none";
     document.getElementById("dd-summary").style.display  = "block";
-    // err.message = data.error, err.detail = data.detail (실제 원인)
     const detail = err.detail ? '<br><small style="color:#999;">상세: ' + err.detail + '</small>' : '';
     document.getElementById("dd-summary").innerHTML =
       errBox('😢 요약 실패: ' + err.message + detail + '<br><small>문제가 계속되면 /api/status 를 확인해 주세요.</small>');
+  }
+}
+
+/* ─────────────────────────────────────────────
+   보고서 없는 기업 — Gemini 일반지식 요약
+   ─────────────────────────────────────────────*/
+async function loadNoReportSummary(corpCode, corpName) {
+  show("disclosure-detail");
+  document.getElementById("dd-title").textContent  = corpName + ' — AI 일반 정보';
+  document.getElementById("dd-meta").textContent   = '⚠️ DART 공시 기반 보고서 없음 · AI 학습 데이터 기반 요약';
+  document.getElementById("dd-loading").style.display = "block";
+  document.getElementById("dd-summary").style.display  = "none";
+
+  const cacheKey = 'noreport_' + corpName;
+  const cached = localStorage.getItem(cacheKey);
+  if (cached) {
+    try {
+      document.getElementById("dd-loading").style.display = "none";
+      document.getElementById("dd-summary").style.display  = "block";
+      renderGeneralReport(JSON.parse(cached), 'noreport_' + corpName, corpName);
+      return;
+    } catch(e) {}
+  }
+
+  try {
+    const res  = await fetchWithTimeout('/api/no-report-summary?corpName=' + encodeURIComponent(corpName), 60000);
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+
+    localStorage.setItem(cacheKey, JSON.stringify(data.data));
+    document.getElementById("dd-loading").style.display = "none";
+    document.getElementById("dd-summary").style.display  = "block";
+    renderGeneralReport(data.data, 'noreport_' + corpName, corpName);
+  } catch(err) {
+    document.getElementById("dd-loading").style.display = "none";
+    document.getElementById("dd-summary").style.display  = "block";
+    document.getElementById("dd-summary").innerHTML = errBox(
+      '📋 이 기업의 공시 보고서를 찾을 수 없어요.<br><small>' + corpName + '은 신규 상장사이거나 비상장사일 수 있어요.</small>'
+    );
   }
 }
 
