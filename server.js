@@ -176,21 +176,75 @@ function yyyymmdd(date) { return date.toISOString().slice(0,10).replace(/-/g,'')
 
 // ─────────────────────────────────────────────────────────
 // 1-A. 회사 목록 검색  GET /api/companies?name=현대
-//      ★ DART corpCode.xml 기반 — 정확한 회사명 검색 (공시 목록과 무관)
+//      ★ 빠른 경로: DART list.json 으로 1~2초 내 corp_code 조회
+//      ★ 느린 경로: corpCode.xml 전체 다운로드 (폴백, /tmp 파일캐시 적용)
 // ─────────────────────────────────────────────────────────
 let _corpList    = null;   // 메모리 캐시
 let _corpListAt  = 0;
-const CORP_TTL   = 30 * 24 * 60 * 60 * 1000;  // 30일마다 갱신
+const CORP_TTL        = 30 * 24 * 60 * 60 * 1000;   // 30일
+const CORP_CACHE_FILE = '/tmp/corp_list.json';        // Vercel /tmp 파일캐시
 
+// ── 빠른 경로: list.json 으로 corp_code 조회 (1~2초) ─────
+async function quickCorpLookup(name) {
+  const today      = new Date();
+  const oneYearAgo = new Date(today);
+  oneYearAgo.setFullYear(today.getFullYear() - 1);
+
+  const { data } = await axios.get('https://opendart.fss.or.kr/api/list.json', {
+    params: {
+      crtfc_key: DART_API_KEY,
+      corp_name : name,
+      bgn_de    : yyyymmdd(oneYearAgo),
+      end_de    : yyyymmdd(today),
+      sort      : 'date',
+      sort_mth  : 'desc',
+      page_count: 100,
+    },
+    timeout: 8000,
+  });
+
+  if (data.status !== '000' || !data.list) return [];
+
+  // corp_code 기준 중복 제거
+  const seen = new Set();
+  const results = [];
+  for (const item of data.list) {
+    if (!seen.has(item.corp_code)) {
+      seen.add(item.corp_code);
+      results.push({
+        corp_code : item.corp_code,
+        corp_name : item.corp_name,
+        stock_code: item.stock_code || '',
+      });
+    }
+  }
+  return results;
+}
+
+// ── 느린 경로: corpCode.xml 전체 다운로드 + /tmp 파일캐시 ─
 async function getCorpList() {
   const now = Date.now();
+
+  // ① 메모리 캐시
   if (_corpList && (now - _corpListAt) < CORP_TTL) return _corpList;
 
+  // ② /tmp 파일캐시 (같은 Vercel 인스턴스 재실행 시 빠름)
+  try {
+    const fileData = JSON.parse(fs.readFileSync(CORP_CACHE_FILE, 'utf8'));
+    if (fileData.ts && (now - fileData.ts) < CORP_TTL && Array.isArray(fileData.corps)) {
+      _corpList   = fileData.corps;
+      _corpListAt = fileData.ts;
+      console.log('[corpCode.xml] /tmp 캐시 로드:', fileData.corps.length, '개');
+      return _corpList;
+    }
+  } catch { /* 캐시 없음 — 계속 */ }
+
+  // ③ DART 다운로드
   console.log('[corpCode.xml] 다운로드 시작...');
   const response = await axios.get('https://opendart.fss.or.kr/api/corpCode.xml', {
     params: { crtfc_key: DART_API_KEY },
     responseType: 'arraybuffer',
-    timeout: 25000,
+    timeout: 55000,
   });
 
   const zip    = new AdmZip(Buffer.from(response.data));
@@ -201,12 +255,12 @@ async function getCorpList() {
   let xml;
   try {
     xml = rawBuf.toString('utf-8');
-    if (xml.includes('\ufffd')) xml = iconv.decode(rawBuf, 'euc-kr');
+    if (xml.includes('�')) xml = iconv.decode(rawBuf, 'euc-kr');
   } catch { xml = iconv.decode(rawBuf, 'euc-kr'); }
 
   console.log('[corpCode.xml] XML 크기:', xml.length, '자');
 
-  // indexOf 방식 파싱 (정규식보다 안정적 — 줄바꿈/공백 영향 없음)
+  // indexOf 방식 파싱
   const corps = [];
   const parts  = xml.split('<list>');
   for (let i = 1; i < parts.length; i++) {
@@ -224,10 +278,27 @@ async function getCorpList() {
     if (corp_code && corp_name) corps.push({ corp_code, corp_name, stock_code });
   }
 
+  // /tmp 파일캐시 저장 (다음 cold start에 재사용)
+  try {
+    fs.writeFileSync(CORP_CACHE_FILE, JSON.stringify({ ts: now, corps }));
+    console.log('[corpCode.xml] /tmp 캐시 저장 완료');
+  } catch (e) {
+    console.warn('[corpCode.xml] /tmp 캐시 저장 실패:', e.message);
+  }
+
   _corpList   = corps;
   _corpListAt = now;
   console.log('[corpCode.xml]', corps.length, '개 로드 완료 | 샘플:', corps.slice(0,3).map(c=>c.corp_name).join(', '));
   return corps;
+}
+
+// 결과 정렬 헬퍼
+function sortCorps(list, name) {
+  const exact   = list.filter(c => c.corp_name === name);
+  const starts  = list.filter(c => c.corp_name !== name && c.corp_name.startsWith(name));
+  const partial = list.filter(c => !c.corp_name.startsWith(name) && c.corp_name.includes(name));
+  const sort    = arr => arr.sort((a,b) => a.corp_name.localeCompare(b.corp_name, 'ko'));
+  return [...exact, ...sort(starts), ...sort(partial)].slice(0, 30);
 }
 
 app.get('/api/companies', async (req, res) => {
@@ -236,14 +307,23 @@ app.get('/api/companies', async (req, res) => {
   if (!DART_API_KEY) return res.status(500).json({ error: 'DART_API_KEY가 설정되지 않았습니다.' });
 
   try {
-    const corps   = await getCorpList();
-    // 정렬: ① 정확일치 ② 앞부분 일치 ③ 포함 순, 각 그룹 내 가나다순
-    const exact   = corps.filter(c => c.corp_name === name);
-    const starts  = corps.filter(c => c.corp_name !== name && c.corp_name.startsWith(name));
-    const partial = corps.filter(c => !c.corp_name.startsWith(name) && c.corp_name.includes(name));
-    const sort    = arr => arr.sort((a,b) => a.corp_name.localeCompare(b.corp_name, 'ko'));
-    const results = [...exact, ...sort(starts), ...sort(partial)].slice(0, 30);
-    console.log('[/api/companies]', name, '→', results.length, '개 | 샘플:', results.slice(0,5).map(c=>c.corp_name).join(', '));
+    // ── ① 빠른 경로: list.json (1~2초) ─────────────────
+    let results = [];
+    try {
+      const quick = await quickCorpLookup(name);
+      results = sortCorps(quick, name);
+      console.log('[/api/companies fast]', name, '→', results.length, '개');
+    } catch (e) {
+      console.warn('[/api/companies fast] 실패, 전체 검색으로 폴백:', e.message);
+    }
+
+    // ── ② 결과 없으면 corpCode.xml 폴백 ─────────────────
+    if (results.length === 0) {
+      const corps = await getCorpList();
+      results = sortCorps(corps.filter(c => c.corp_name.includes(name)), name);
+      console.log('[/api/companies full]', name, '→', results.length, '개');
+    }
+
     res.json(results);
   } catch (err) {
     res.status(500).json({ error: '회사 목록 로드 실패', detail: err.message });
