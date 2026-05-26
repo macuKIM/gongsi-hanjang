@@ -71,12 +71,12 @@ app.get('/api/test', async (req, res) => {
 // ═══════════════════════════════════════════════════════════
 // ── 모델 설정 ──────────────────────────────────────────────
 // 나중에 업그레이드하고 싶으면 아래 문자열만 바꾸면 됩니다:
-//   현재 안정버전 → 'gemini-1.5-flash'
-//   최신 고성능   → 'gemini-1.5-pro'
+//   현재 안정버전 → 'gemini-2.5-flash'
+//   최신 고성능   → 'gemini-2.5-pro'
 // ─────────────────────────────────────────────────────────
 const GEMINI_MODELS = {
-  general: 'gemini-1.5-flash',   // 일반인용 — 안정적·저렴
-  expert : 'gemini-1.5-flash',   // 전문가용 — 업그레이드: 'gemini-1.5-pro'
+  general: 'gemini-2.5-flash',   // 일반인용
+  expert : 'gemini-2.5-flash',   // 전문가용 — 업그레이드: 'gemini-2.5-pro'
 };
 const GEMINI_TEMP = {
   general: 0.2,
@@ -571,7 +571,7 @@ app.get('/api/no-report-summary', async (req, res) => {
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       systemInstruction: `당신은 기업 분석 AI입니다.
 DART 공시 원문 없이 학습 데이터만으로 기업 개요를 작성합니다.
 반드시 JSON만 출력하세요. 마크다운 코드블록 금지.
