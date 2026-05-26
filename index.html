@@ -2116,7 +2116,7 @@ async function loadSummary(rcptNo, title, date, submitter) {
 
   try {
     const corpName = dartState.currentCompany?.corpName || '';
-    const res  = await fetch(`/api/summarize?rcptNo=${rcptNo}&mode=general&corpName=${encodeURIComponent(corpName)}`);
+    const res  = await fetchWithTimeout(`/api/summarize?rcptNo=${rcptNo}&mode=general&corpName=${encodeURIComponent(corpName)}`, 90000);
     const data = await res.json();
 
     if (data.error) {
@@ -2204,7 +2204,7 @@ async function loadExpertSummary(rcptNo, title) {
   }
   try {
     const corpName = dartState.currentCompany?.corpName || '';
-    const res  = await fetch(`/api/summarize?rcptNo=${rcptNo}&mode=expert&corpName=${encodeURIComponent(corpName)}`);
+    const res  = await fetchWithTimeout(`/api/summarize?rcptNo=${rcptNo}&mode=expert&corpName=${encodeURIComponent(corpName)}`, 90000);
     const data = await res.json();
     if (data.error) {
       const e = new Error(data.error);

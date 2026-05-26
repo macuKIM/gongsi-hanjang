@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "regions": ["icn1"],
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
     { "src": "server.js",  "use": "@vercel/node", "config": { "maxDuration": 60 } }

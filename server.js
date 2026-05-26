@@ -39,6 +39,29 @@ app.get('/api/status', (req, res) => {
   });
 });
 
+// ─────────────────────────────────────────────────────────
+// 0-B. DART 연결 테스트  GET /api/test?stock_code=005930
+// ─────────────────────────────────────────────────────────
+app.get('/api/test', async (req, res) => {
+  const stockCode = (req.query.stock_code || '005930').trim();
+  const t0 = Date.now();
+  try {
+    const { data } = await axios.get('https://opendart.fss.or.kr/api/company.json', {
+      params: { crtfc_key: DART_API_KEY, stock_code: stockCode },
+      timeout: 10000,
+    });
+    res.json({
+      ok        : data.status === '000',
+      corp_name : data.corp_name,
+      corp_code : data.corp_code,
+      elapsed_ms: Date.now() - t0,
+      region    : process.env.VERCEL_REGION || process.env.AWS_REGION || 'unknown',
+    });
+  } catch(e) {
+    res.json({ ok: false, error: e.message, elapsed_ms: Date.now() - t0 });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════
 //  모델 설정 — 나중에 수익이 나면 expert만 pro로 바꾸면 됨
 //  변경 방법: 'gemini-1.5-flash' → 'gemini-1.5-pro'
