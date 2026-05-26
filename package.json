@@ -1,0 +1,16 @@
+{
+  "name": "gongsi-hanjang",
+  "version": "1.0.0",
+  "description": "공시한장 — DART 공시를 AI로 요약해주는 웹앱",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "axios": "^1.7.0",
+    "adm-zip": "^0.5.10",
+    "iconv-lite": "^0.6.3",
+    "@google/generative-ai": "^0.21.0"
+  }
+}

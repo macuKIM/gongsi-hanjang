@@ -1,0 +1,2302 @@
+<!-- 공시한장 (Gongsi Hanjang) — 한 장으로 읽는 기업 공시
+     비개발자용 단일 파일 웹앱. 이 파일 하나면 어디서든 그대로 열립니다.
+     데이터는 데모용 예시 수치이며, 실제 서비스에서는 전자공시(DART) API로 자동 연결됩니다. -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>공시한장 — 200페이지를 한 장으로</title>
+<meta name="description" content="복잡한 사업보고서를 누구나 읽을 수 있는 한 장으로. 기업이 무슨 일을 하는지, 어디서 돈을 버는지, 앞으로 어디에 투자하는지 5분 만에 이해하세요.">
+
+<style>
+  /* ---------- 폰트 (인터넷이 막혀도 자동으로 시스템 폰트로 대체되어 절대 깨지지 않음) ---------- */
+  /* Inter (숫자·영문) + Noto Sans KR (한글) — Google Fonts, SIL OFL 오픈소스 */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Noto+Sans+KR:wght@400;500;600;700;900&display=swap');
+
+  :root{
+    /* ── 3색 시스템: Black · White · Red ── */
+    --paper:#FFFFFF;
+    --paper-2:#F5F5F5;
+    --ink:#111111;
+    --ink-soft:#666666;
+    --line:#E0E0E0;
+    --navy:#111111;
+    --up:#E02020;
+    --down:#1565C0;
+    --gold:#E02020;
+    --gold-soft:#FF5050;
+    --serif:'Inter','Noto Sans KR',sans-serif;
+    --sans:'Noto Sans KR','Inter',sans-serif;
+  }
+
+  *{box-sizing:border-box; margin:0; padding:0;}
+  html,body{background:var(--paper); color:var(--ink); font-family:var(--sans); -webkit-font-smoothing:antialiased;}
+  body{line-height:1.6; overflow-x:hidden;}
+  button{font-family:inherit; cursor:pointer; border:none; background:none; color:inherit;}
+
+
+
+  .wrap{max-width:1080px; margin:0 auto; padding:0 22px; position:relative; z-index:2;}
+
+  /* ---------- 상단 마스트헤드 ---------- */
+  header.mast{border-bottom:2px solid var(--ink); position:sticky; top:0; background:rgba(251,248,241,.92); backdrop-filter:blur(8px); z-index:50;}
+  .mast-inner{display:flex; align-items:center; justify-content:space-between; padding:14px 0;}
+  .brand{display:flex; align-items:baseline; gap:10px; cursor:pointer;}
+  .brand .logo{font-family:var(--serif); font-weight:900; font-size:25px; letter-spacing:-.5px; color:var(--navy);}
+  .brand .logo b{color:var(--up);}
+  .brand .tag{font-size:11px; color:var(--ink-soft); letter-spacing:.5px; display:none;}
+  @media(min-width:640px){.brand .tag{display:inline;}}
+  .mast-actions{display:flex; align-items:center; gap:8px;}
+  .pill{font-size:12px; border:1px solid var(--line); border-radius:999px; padding:6px 12px; color:var(--ink-soft); background:#fff;}
+  .btn-pro{background:var(--navy); color:#fff; border-radius:999px; padding:8px 16px; font-size:13px; font-weight:600; transition:.2s;}
+  .btn-pro:hover{background:#0d1729;}
+
+  /* ---------- 히어로 ---------- */
+  .hero{padding:40px 0 26px; border-bottom:1px solid var(--line);}
+  .hero-inner{display:flex; align-items:center; justify-content:space-between; gap:40px; flex-wrap:wrap;}
+  .hero-text{flex:1; min-width:270px;}
+  .hero-search{flex:0 0 320px; min-width:250px;}
+  .hero .kick{font-size:12px; letter-spacing:3px; color:var(--gold); font-weight:700; text-transform:uppercase;}
+  .hero h1{font-family:var(--serif); font-weight:900; font-size:clamp(28px,5vw,50px); line-height:1.08; letter-spacing:-1px; margin:12px 0 14px; color:var(--navy);}
+  .hero h1 em{font-style:normal; color:var(--up);}
+  .hero p{font-size:clamp(14px,2vw,16px); color:var(--ink-soft); line-height:1.65;}
+
+  /* ---------- 검색 ---------- */
+  .searchbar{display:flex; align-items:center; gap:10px; background:#fff; border:1.5px solid var(--ink); border-radius:14px; padding:14px 18px; margin-top:0; max-width:100%; box-shadow:0 2px 16px rgba(0,0,0,.09);}
+  .ac-item:hover, .ac-item.ac-hover{background:var(--paper-2,#F5F5F5)!important;}
+  .searchbar input{flex:1; border:none; outline:none; font-size:16px; background:transparent; color:var(--ink); font-family:inherit;}
+  .searchbar .ic{font-size:18px; color:var(--ink-soft);}
+
+  /* ---------- 정렬 탭 ---------- */
+  .toolbar{display:flex; align-items:center; justify-content:space-between; margin:40px 0 18px; flex-wrap:wrap; gap:12px;}
+  .section-title{font-family:var(--serif); font-weight:700; font-size:22px; color:var(--ink);}
+  .sorts{display:flex; gap:6px; background:var(--paper-2); padding:5px; border-radius:11px;}
+  .sorts button{font-size:13px; padding:8px 14px; border-radius:8px; color:var(--ink-soft); font-weight:500; transition:.18s; white-space:nowrap;}
+  .sorts button.on{background:#fff; color:var(--navy); font-weight:700; box-shadow:0 1px 4px rgba(0,0,0,.08);}
+
+  /* ---------- 기업 리스트 ---------- */
+  .grid{display:grid; grid-template-columns:1fr; gap:14px; padding-bottom:60px;}
+  @media(min-width:680px){.grid{grid-template-columns:1fr 1fr;}}
+  .card{background:#fff; border:1px solid var(--line); border-radius:16px; padding:22px; transition:.22s; cursor:pointer; position:relative; overflow:hidden;}
+  .card:hover{transform:translateY(-3px); box-shadow:0 14px 30px rgba(22,35,63,.10); border-color:var(--navy);}
+  .card .rank{position:absolute; top:18px; right:20px; font-family:var(--serif); font-size:38px; font-weight:900; color:var(--paper-2); line-height:1;}
+  .card .cname{font-family:var(--serif); font-size:21px; font-weight:700; color:var(--navy);}
+  .card .ccode{font-size:12px; color:var(--ink-soft); margin-top:2px;}
+  .card .sector{display:inline-block; font-size:11px; background:var(--paper-2); color:var(--ink-soft); padding:3px 9px; border-radius:6px; margin-top:10px;}
+  .card .oneliner{font-size:13.5px; color:var(--ink-soft); margin-top:12px; line-height:1.55; min-height:42px;}
+  .card .stats{display:flex; gap:18px; margin-top:16px; padding-top:15px; border-top:1px dashed var(--line);}
+  .card .stat .lbl{font-size:11px; color:var(--ink-soft);}
+  .card .stat .val{font-family:var(--serif); font-size:17px; font-weight:700; margin-top:2px;}
+  .up{color:var(--up);} .down{color:var(--down);}
+  .spark{display:flex; align-items:flex-end; gap:4px; height:34px; margin-left:auto;}
+  .spark span{width:7px; border-radius:2px 2px 0 0; background:var(--gold-soft); opacity:.85;}
+
+  /* ---------- 상세(기업) 화면 ---------- */
+  .detail{padding:30px 0 80px; display:none;}
+  .back{display:inline-flex; align-items:center; gap:6px; font-size:14px; color:var(--ink-soft); margin-bottom:22px;}
+  .back:hover{color:var(--up);}
+  .dhead{border-bottom:2px solid var(--ink); padding-bottom:22px;}
+  .dhead .sector{display:inline-block; font-size:12px; background:var(--navy); color:#fff; padding:4px 11px; border-radius:6px;}
+  .dhead h2{font-family:var(--serif); font-size:clamp(28px,5vw,42px); font-weight:900; color:var(--navy); margin:12px 0 4px; letter-spacing:-.5px;}
+  .dhead .code{font-size:14px; color:var(--ink-soft);}
+  .dhead .summary-line{font-family:var(--serif); font-size:clamp(17px,2.6vw,21px); line-height:1.5; margin-top:18px; color:var(--ink); border-left:4px solid var(--up); padding-left:16px;}
+
+  .block{margin-top:34px;}
+  .block .btitle{font-size:12px; letter-spacing:2px; color:var(--gold); font-weight:700; text-transform:uppercase; margin-bottom:14px;}
+
+  /* 사업 비중 막대 */
+  .bizbar{margin-bottom:13px;}
+  .bizbar .row{display:flex; justify-content:space-between; font-size:14px; margin-bottom:5px;}
+  .bizbar .row b{font-weight:600;}
+  .bizbar .track{height:9px; background:var(--paper-2); border-radius:99px; overflow:hidden;}
+  .bizbar .fill{height:100%; border-radius:99px; background:linear-gradient(90deg,var(--navy),#33507e);}
+
+  /* 영업이익 추이 */
+  .profit{display:flex; align-items:flex-end; gap:14px; height:160px; padding:20px; background:#fff; border:1px solid var(--line); border-radius:14px;}
+  .profit .col{flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; gap:8px;}
+  .profit .bar{width:100%; max-width:54px; border-radius:6px 6px 0 0; background:linear-gradient(180deg,var(--up),#e8675f); transition:height .6s cubic-bezier(.2,.8,.2,1);}
+  .profit .yr{font-size:12px; color:var(--ink-soft);}
+  .profit .amt{font-size:12.5px; font-weight:700; color:var(--ink);}
+
+  /* 자세히 보기 카드(자물쇠) */
+  .deepcta{margin-top:34px; background:#111111; border-radius:18px; padding:30px; color:#fff; position:relative; overflow:hidden; border:1px solid #222;}
+  .deepcta h3{font-family:var(--serif); font-size:23px; font-weight:700;}
+  .deepcta p{font-size:14px; opacity:.85; margin-top:8px; max-width:440px;}
+  .deepcta .freecnt{font-size:12px; margin-top:14px; opacity:.7;}
+  .deepcta button{margin-top:18px; background:var(--gold-soft); color:#1b1405; font-weight:800; padding:13px 26px; border-radius:11px; font-size:15px; transition:.2s;}
+  .deepcta button:hover{background:#dcb877; transform:translateY(-2px);}
+
+  /* ---------- 자세히 보기 화면 ---------- */
+  .deep{padding:30px 0 90px; display:none;}
+  .deeptabs{display:flex; gap:8px; margin:6px 0 28px; background:var(--paper-2); padding:6px; border-radius:13px; max-width:430px;}
+  .deeptabs button{flex:1; padding:11px; border-radius:9px; font-size:14px; font-weight:600; color:var(--ink-soft); transition:.18s;}
+  .deeptabs button.on{background:#fff; color:var(--navy); box-shadow:0 2px 6px rgba(0,0,0,.08);}
+  .deeptabs button .sub{display:block; font-size:11px; font-weight:400; opacity:.7; margin-top:1px;}
+
+  .report{background:#fff; border:1px solid var(--line); border-radius:16px; padding:clamp(24px,5vw,46px);}
+  .report .rkick{font-size:11px; letter-spacing:2px; color:var(--gold); font-weight:700;}
+  .report h3{font-family:var(--serif); font-size:clamp(22px,4vw,30px); font-weight:900; color:var(--navy); margin:6px 0 22px; letter-spacing:-.5px;}
+  .report h4{font-family:var(--serif); font-size:19px; color:var(--navy); margin:30px 0 10px; padding-bottom:8px; border-bottom:1px solid var(--line);}
+  .report p{font-size:15.5px; line-height:1.85; color:#2a2823; margin-bottom:14px;}
+  .report .lead{font-size:17px; font-family:var(--serif); line-height:1.8; color:var(--ink);}
+  .report ul{margin:6px 0 16px; padding-left:4px; list-style:none;}
+  .report li{font-size:15px; line-height:1.8; padding-left:22px; position:relative; margin-bottom:7px; color:#2a2823;}
+  .report li::before{content:"—"; position:absolute; left:0; color:var(--up); font-weight:700;}
+  .verdict{margin-top:28px; background:var(--paper); border:1.5px solid var(--ink); border-radius:14px; padding:22px;}
+  .verdict .vlbl{font-size:12px; letter-spacing:2px; color:var(--up); font-weight:700;}
+  .verdict p{font-family:var(--serif); font-size:18px; line-height:1.6; margin:8px 0 0; color:var(--navy); font-weight:500;}
+
+  /* 전문가용 테이블 */
+  .ftable{width:100%; border-collapse:collapse; margin:10px 0 18px; font-size:14px;}
+  .ftable th,.ftable td{padding:11px 12px; text-align:right; border-bottom:1px solid var(--line);}
+  .ftable th:first-child,.ftable td:first-child{text-align:left;}
+  .ftable thead th{background:var(--paper-2); font-weight:700; color:var(--navy); font-size:13px;}
+  .ftable tbody tr:hover{background:#fcfaf4;}
+  .note{font-size:13px; color:var(--ink-soft); background:var(--paper-2); border-radius:10px; padding:14px 16px; margin-top:8px; line-height:1.6;}
+  .b2b{margin-top:26px; border:1px dashed var(--gold); border-radius:12px; padding:18px; background:#fdfbf4;}
+  .b2b b{color:var(--gold);}
+
+  /* ---------- 결제 모달 ---------- */
+  .overlay{position:fixed; inset:0; background:rgba(20,18,14,.55); backdrop-filter:blur(4px); z-index:100; display:none; align-items:center; justify-content:center; padding:20px;}
+  .modal{background:var(--paper); border-radius:22px; max-width:440px; width:100%; padding:34px; position:relative; border:2px solid var(--ink); animation:pop .3s cubic-bezier(.2,.9,.3,1.2);}
+  @keyframes pop{from{transform:scale(.9) translateY(10px); opacity:0;} to{transform:scale(1) translateY(0); opacity:1;}}
+  .modal .x{position:absolute; top:18px; right:20px; font-size:22px; color:var(--ink-soft);}
+  .modal .mkick{font-size:12px; letter-spacing:2px; color:var(--gold); font-weight:700;}
+  .modal h3{font-family:var(--serif); font-size:26px; font-weight:900; color:var(--navy); margin:8px 0 6px;}
+  .modal .msub{font-size:14px; color:var(--ink-soft); margin-bottom:22px;}
+  .plan{border:1.5px solid var(--line); border-radius:14px; padding:18px; margin-bottom:12px; cursor:pointer; transition:.18s; background:#fff; display:flex; justify-content:space-between; align-items:center;}
+  .plan:hover{border-color:var(--navy);}
+  .plan.best{border-color:var(--up); position:relative;}
+  .plan.best::after{content:"2개월 무료"; position:absolute; top:-10px; left:18px; background:var(--up); color:#fff; font-size:11px; font-weight:700; padding:3px 9px; border-radius:6px;}
+  .plan .pn{font-weight:700; font-size:15px; color:var(--navy);}
+  .plan .pd{font-size:12px; color:var(--ink-soft); margin-top:2px;}
+  .plan .pp{font-family:var(--serif); font-size:22px; font-weight:800; color:var(--ink);}
+  .plan .pp small{font-size:12px; font-weight:400; color:var(--ink-soft);}
+  .modal .pay{width:100%; background:var(--navy); color:#fff; font-weight:700; padding:15px; border-radius:13px; font-size:15px; margin-top:8px; transition:.2s;}
+  .modal .pay:hover{background:#0d1729;}
+  .modal .fineprint{font-size:11px; color:var(--ink-soft); text-align:center; margin-top:12px; line-height:1.5;}
+
+  /* 데모 안내 배너 */
+  .demo-banner{background:#1b1a17; color:#f4efe3; font-size:12.5px; text-align:center; padding:9px 16px; line-height:1.5;}
+  .demo-banner b{color:var(--gold-soft);}
+
+  footer{border-top:1px solid var(--line); padding:30px 0 50px; text-align:center; color:var(--ink-soft); font-size:13px;}
+  .toast{position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(20px); background:var(--navy); color:#fff; padding:13px 22px; border-radius:12px; font-size:14px; z-index:120; opacity:0; transition:.3s; pointer-events:none;}
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0);}
+
+  .fade{animation:fade .5s ease both;}
+  @keyframes fade{from{opacity:0; transform:translateY(12px);} to{opacity:1; transform:translateY(0);}}
+
+  /* ══════════════════════════════════════
+     다크 모드
+  ══════════════════════════════════════ */
+  html.dark{
+    --paper:#111009;
+    --paper-2:#1A1A1A;
+    --ink:#EDE8DC;
+    --ink-soft:#8A7F6E;
+    --line:#2A2A2A;
+    --navy:#B8CCE8;
+    --up:#FF6158;
+    --down:#5B9CF6;
+    --gold:#C9A060;
+    --gold-soft:#C9A765;
+  }
+  html.dark header.mast{background:rgba(15,15,15,.95); border-color:#2A2A2A;}
+  html.dark .card{background:#1A1A1A; border-color:#2A2A2A;}
+  html.dark .card:hover{border-color:#B8CCE8;}
+  html.dark .report{background:#1A1A1A; border-color:#2A2A2A;}
+  html.dark .modal{background:#1A1A1A; border-color:#2A2A2A;}
+  html.dark .plan{background:#202020; border-color:#2A2A2A;}
+  html.dark .searchbar{background:#1A1A1A;}
+  html.dark .sorts{background:#1A1A1A;}
+  html.dark .sorts button.on{background:#252525; color:#B8CCE8;}
+  html.dark .profit{background:#1A1A1A; border-color:#2A2A2A;}
+  html.dark .verdict{background:#111009; border-color:#2A2A2A;}
+  html.dark .ftable thead th{background:#252525;}
+  html.dark .ftable tbody tr:hover{background:#1E1E1E;}
+  html.dark .b2b{background:#1A1A1A; border-color:#E02020;}
+  html.dark .note{background:#252525;}
+  html.dark .deeptabs{background:#1A1A1A;}
+  html.dark .deeptabs button.on{background:#252525; color:#B8CCE8;}
+  html.dark .pill{background:#1A1A1A; border-color:#2A2A2A; color:#999999;}
+  html.dark .hero{border-color:#2A2A2A;}
+  html.dark .demo-banner{background:#0A0A0A;}
+
+  /* 핵심 수정: 하드코딩된 어두운 색 → 다크모드 가독성 확보 */
+  html.dark .report p,
+  html.dark .report li{ color:#E0E0E0; }
+  html.dark .hero h1{ color:#F5F5F5; }
+  html.dark .section-title{ color:#F5F5F5; }
+  html.dark .report .lead{ color:#F5F5F5; }
+  html.dark .verdict p{ color:#F5F5F5; }
+  html.dark .ftable td{ color:#DDDDDD; }
+  html.dark .card .oneliner{ color:#999999; }
+  html.dark .card .stat .lbl{ color:#777777; }
+  html.dark .bizbar .row{ color:#DDDDDD; }
+  html.dark .back{ color:#999999; }
+  html.dark .dhead .code{ color:#999999; }
+  html.dark .note{ color:#DDDDDD; }
+
+  /* ── 라이트모드 명시적 밝기 보장 ── */
+  html:not(.dark) body{background:var(--paper);}
+  html:not(.dark) .card{background:#fff;}
+  html:not(.dark) .report{background:#fff;}
+  html:not(.dark) .searchbar{background:#fff;}
+  html:not(.dark) .sorts{background:var(--paper-2);}
+  html:not(.dark) .sorts button.on{background:#fff; color:var(--navy);}
+  html:not(.dark) .section-title{color:#1B1A17;}
+  html:not(.dark) .card .cname{color:var(--navy);}
+  html:not(.dark) .profit{background:#fff;}
+  html:not(.dark) .dhead h2{color:var(--navy);}
+
+  /* ── 다크모드 토글 버튼 ── */
+  .dark-btn{width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:17px; border:1px solid var(--line); background:var(--paper-2); transition:.2s; cursor:pointer;}
+  .dark-btn:hover{border-color:var(--ink-soft);}
+
+  /* ══════════════════════════════════════
+     모바일 최적화
+  ══════════════════════════════════════ */
+
+  /* 히어로 — 모바일에서 세로 스택 */
+  @media(max-width:620px){
+    .hero{padding:28px 0 22px;}
+    .hero-inner{gap:22px;}
+    .hero-search{flex:0 0 100%;}
+    .hero h1{font-size:30px; margin:10px 0 12px;}
+    .hero p{font-size:14.5px;}
+  }
+
+  /* 정렬 탭 — 모바일 스크롤 */
+  @media(max-width:620px){
+    .toolbar{flex-direction:column; align-items:flex-start; gap:10px; margin:28px 0 14px;}
+    .sorts{overflow-x:auto; -webkit-overflow-scrolling:touch; max-width:100%;}
+    .sorts::-webkit-scrollbar{display:none;}
+    .section-title{font-size:18px;}
+  }
+
+  /* 헤더 — 모바일에서 pill 숨김 */
+  @media(max-width:520px){
+    #freePill{display:none;}
+    .brand .logo{font-size:21px;}
+  }
+
+  /* 카드 — 모바일 패딩 조정 */
+  @media(max-width:480px){
+    .card{padding:18px;}
+    .card .cname{font-size:19px;}
+    .card .oneliner{font-size:13px; min-height:36px;}
+    .card .stats{gap:12px;}
+    .card .stat .val{font-size:15px;}
+  }
+
+  /* 상세 화면 — 모바일 */
+  @media(max-width:480px){
+    .dhead h2{font-size:26px;}
+    .dhead .summary-line{font-size:15px;}
+    .report{padding:20px;}
+    .report h3{font-size:20px;}
+    .report h4{font-size:16px;}
+    .report p, .report li{font-size:14.5px;}
+    .report .lead{font-size:15px;}
+    .verdict p{font-size:16px;}
+    .deepcta{padding:22px;}
+    .deepcta h3{font-size:19px;}
+    .deepcta p{font-size:13.5px;}
+    .deep, .detail{padding:20px 0 70px;}
+    .deeptabs{max-width:100%;}
+  }
+
+  /* 모달 — 모바일 */
+  @media(max-width:480px){
+    .modal{padding:26px 20px;}
+    .modal h3{font-size:21px;}
+    .plan .pp{font-size:18px;}
+    .overlay{padding:14px;}
+  }
+
+  /* 영업이익 차트 — 모바일 */
+  @media(max-width:480px){
+    .profit{height:130px; padding:14px; gap:10px;}
+    .profit .bar{max-width:46px;}
+    .profit .amt{font-size:11px;}
+    .profit .yr{font-size:11px;}
+  }
+
+  /* 전체 wrap 패딩 모바일 조정 */
+  @media(max-width:480px){
+    .wrap{padding:0 16px;}
+  }
+
+  /* 버튼 터치 영역 최소 44px 확보 */
+  .btn-pro{min-height:40px;}
+  .sorts button{min-height:36px;}
+  .deepcta button{min-height:46px; width:100%;}
+  .modal .pay{min-height:48px;}
+
+
+  .disclaimer{margin-top:28px; padding:12px 18px; background:var(--paper-2); border-radius:10px; font-size:12px; color:var(--ink-soft); text-align:center; border:1px solid var(--line); line-height:1.65;}
+  html.dark .disclaimer{background:#1C1C1C; border-color:#2A2A2A; color:#777777;}
+  .fin-divider{margin-top:32px; padding-top:26px; border-top:2px dashed var(--line);}
+  .fin-divider h4{font-family:var(--serif); font-size:17px; color:var(--navy); margin:22px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--line);}
+  .fin-divider h4:first-child{margin-top:0;}
+  html.dark .fin-divider{border-color:#2A2720;}
+  html.dark .fin-divider h4{color:#B8CCE8; border-color:#2A2720;}
+
+
+  /* ══ 가독성 향상 — 폰트 크기 증가 ══ */
+  .card .oneliner{font-size:15px; line-height:1.65;}
+  .card .stat .lbl{font-size:13px;}
+  .card .stat .val{font-size:18px;}
+  .card .ccode{font-size:13px;}
+  .report p{font-size:17px; line-height:1.9;}
+  .report li{font-size:17px; line-height:1.9; margin-bottom:10px;}
+  .report .lead{font-size:19px; line-height:1.85;}
+  .report h4{font-size:20px; margin:32px 0 12px;}
+  .note{font-size:15px; line-height:1.75;}
+  .disclaimer{font-size:13px;}
+  .bizbar .row{font-size:15px;}
+  .profit .amt{font-size:14px; font-weight:700;}
+  .profit .yr{font-size:13px;}
+  .dhead .code{font-size:15px;}
+  .dhead .summary-line{font-size:18px; line-height:1.65;}
+
+  /* ── 브랜드 로고 강조 ── */
+  .brand .logo{font-family:'Inter','Noto Sans KR',sans-serif; font-weight:900; letter-spacing:-0.5px;}
+
+  /* ── 섹션 타이틀 ── */
+  .section-title{font-family:'Inter','Noto Sans KR',sans-serif; font-weight:800;}
+
+  /* ── 카드 회사명 ── */
+  .card .cname{font-family:'Inter','Noto Sans KR',sans-serif; font-weight:800; font-size:20px;}
+
+  /* ── 리포트 제목 ── */
+  .report h3{font-family:'Inter','Noto Sans KR',sans-serif; font-weight:800;}
+  .dhead h2{font-family:'Inter','Noto Sans KR',sans-serif; font-weight:900;}
+
+  /* ── 히어로 h1 ── */
+  .hero h1{font-family:'Inter','Noto Sans KR',sans-serif; font-weight:900;}
+
+  /* ── 다크모드 가독성 ── */
+  html.dark .report p,
+  html.dark .report li{color:#E0E0E0;}
+  html.dark .report .lead{color:#F5F5F5;}
+  html.dark .report h3,
+  html.dark .report h4{color:#F5F5F5;}
+  html.dark .verdict p{color:#F5F5F5;}
+  html.dark .card .cname{color:#F5F5F5;}
+  html.dark .dhead h2{color:#F5F5F5;}
+  html.dark .dhead .summary-line{color:#E0E0E0;}
+  html.dark .deepcta{background:#1A1A1A; border-color:#333;}
+  html.dark .note{color:#DDDDDD;}
+  html.dark .section-title{color:#F5F5F5;}
+  html.dark .hero h1{color:#F5F5F5;}
+
+  /* ── 모바일 가독성 ── */
+  @media(max-width:480px){
+    .report p,.report li{font-size:15.5px;}
+    .report .lead{font-size:17px;}
+    .report h4{font-size:18px;}
+    .card .oneliner{font-size:14.5px;}
+    .dhead .summary-line{font-size:16px;}
+  }
+
+
+  /* ── DART 실시간 섹션 ── */
+  @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+
+  .disclosure-card {
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 18px 22px;
+    margin-bottom: 12px;
+    cursor: pointer;
+    transition: .2s;
+    background: var(--paper);
+  }
+  .disclosure-card:hover {
+    border-color: var(--navy);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,.08);
+  }
+  .disclosure-card .d-title { font-weight:700; font-size:16px; color:var(--ink); }
+  .disclosure-card .d-meta  { font-size:13px; color:var(--ink-soft); margin-top:5px; }
+  .disclosure-card .d-cta   { font-size:12px; color:var(--gold); margin-top:8px; font-weight:700; }
+
+  html.dark .disclosure-card { background:var(--paper-2); border-color:var(--line); }
+  html.dark .disclosure-card:hover { border-color:var(--navy); }
+
+  /* AI 요약 마크다운 스타일 */
+  .ai-body h2 { font-family:var(--serif); font-size:19px; font-weight:800; color:var(--navy); margin:26px 0 10px; padding-bottom:7px; border-bottom:1px solid var(--line); }
+  .ai-body p  { font-size:16px; line-height:1.9; color:var(--ink); margin-bottom:12px; }
+  .ai-body ul { margin:4px 0 14px; padding-left:4px; list-style:none; }
+  .ai-body li { font-size:15.5px; line-height:1.8; padding-left:22px; position:relative; margin-bottom:6px; color:var(--ink); }
+  .ai-body li::before { content:"—"; position:absolute; left:0; color:var(--up); font-weight:700; }
+  html.dark .ai-body h2 { color:var(--navy); border-color:var(--line); }
+  html.dark .ai-body p,
+  html.dark .ai-body li { color:#E0E0E0; }
+
+
+  /* ── 소셜 로그인 버튼 ── */
+  .social-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 18px;
+    margin-bottom: 10px;
+    border-radius: 12px;
+    border: 1.5px solid var(--sc-border, var(--line));
+    background: var(--sc, #fff);
+    color: var(--sc-text, var(--ink));
+    font-size: 15px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: .18s;
+    text-align: left;
+  }
+  .social-btn:hover { opacity: .88; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+  .social-btn img, .social-btn svg { flex-shrink: 0; }
+  .social-btn span { flex: 1; text-align: center; }
+
+  /* 닉네임 입력 다크모드 */
+  html.dark #nicknameInput { background: var(--paper-2); border-color: var(--line); color: var(--ink); }
+  html.dark #nicknameInput:focus { border-color: var(--navy); }
+
+</style>
+
+<div class="demo-banner">
+  ✅ <b>DART API 연동</b> — 검색창에 회사명을 입력하고 <b>Enter</b>를 누르면 실시간으로 공시를 가져와 AI가 요약해 드립니다. &nbsp;|&nbsp; 아래 인기 기업 카드는 데모 예시입니다.
+</div>
+
+<header class="mast">
+  <div class="wrap mast-inner">
+    <div class="brand" onclick="goHome()">
+      <span class="logo">공시<b>한장</b></span>
+      <span class="tag">200페이지를 한 장으로</span>
+    </div>
+    <div class="mast-actions">
+      <span class="pill" id="freePill">오늘 무료 자세히보기 1회</span>
+      <button class="dark-btn" id="darkBtn" onclick="toggleDark()" title="다크모드 전환">🌙</button>
+      <button class="btn-pro" onclick="openSubscribe()">구독하기</button>
+    </div>
+  </div>
+</header>
+
+<!-- ====== 홈 화면 ====== -->
+<main id="home" class="wrap">
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <div class="kick">기업 공시, 누구나 읽는 한 장으로</div>
+        <h1>이 회사,<br>대체 <em>뭐 하는 곳</em>일까?</h1>
+        <p>사업보고서 200페이지를 다 읽을 필요 없어요.<br>핵심만 한 장으로 정리해 드립니다.</p>
+      </div>
+      <div class="hero-search">
+        <div class="searchbar" style="position:relative;">
+          <span class="ic">🔍</span>
+          <input id="search" placeholder="회사 이름 검색 (예: 삼성, 카카오, LG)"
+                 autocomplete="off"
+                 oninput="filterList(this.value); showAutocomplete(this.value)"
+                 onkeydown="handleSearchKey(event)"
+                 onfocus="showAutocomplete(this.value)">
+          <button onclick="searchDart(document.getElementById('search').value.trim())"
+                  style="background:var(--up);color:#fff;border-radius:10px;padding:8px 14px;font-size:14px;font-weight:700;white-space:nowrap;flex-shrink:0;">검색</button>
+          <div id="autocomplete-list" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--paper,#fff);border:2px solid var(--ink,#111);border-radius:14px;box-shadow:0 8px 32px rgba(0,0,0,.14);z-index:999;max-height:320px;overflow-y:auto;overflow-x:hidden;"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="toolbar">
+    <div class="section-title">지금 많이 찾는 기업</div>
+    <div class="sorts">
+      <button class="on" data-sort="popular" onclick="setSort('popular')">인기순</button>
+      <button data-sort="cap" onclick="setSort('cap')">시가총액순</button>
+      <button data-sort="growth" onclick="setSort('growth')">영업이익 성장순</button>
+    </div>
+  </div>
+
+  <div class="grid" id="list"></div>
+</main>
+
+<!-- ====== 기업 상세 (간단 요약 · 무료) ====== -->
+<main id="detail" class="wrap detail">
+  <button class="back" onclick="goHome()">← 목록으로</button>
+  <div class="dhead">
+    <span class="sector" id="d_sector"></span>
+    <h2 id="d_name"></h2>
+    <div class="code" id="d_code"></div>
+    <div class="summary-line" id="d_oneliner"></div>
+  </div>
+
+  <div class="block">
+    <div class="btitle">주력 사업 비중</div>
+    <div id="d_biz"></div>
+  </div>
+
+  <div class="block">
+    <div class="btitle">최근 3년 영업이익 추이 (데모 예시)</div>
+    <div class="profit" id="d_profit"></div>
+  </div>
+
+  <div class="deepcta">
+    <h3>이 회사, 투자할 만할까?</h3>
+    <p>사업 구조 · 성장성 · 리스크 · 한 줄 결론까지. 200페이지 보고서를 일반인도 읽기 쉬운 한 편의 리포트로 정리해 드립니다.</p>
+    <div class="freecnt" id="d_freecnt"></div>
+    <button onclick="openDeep()">자세히 보기 →</button>
+  </div>
+</main>
+
+<!-- ====== 자세히 보기 (일반인용 / 전문가용) ====== -->
+<main id="deep" class="wrap deep">
+  <button class="back" onclick="backToDetail()">← 간단 요약으로</button>
+  <div class="deeptabs">
+    <button class="on" id="tab_g" onclick="setDeepTab('general')">일반인용<span class="sub">핵심만 쉽게</span></button>
+    <button id="tab_e" onclick="setDeepTab('expert')">전문가용<span class="sub">원문에 충실 · 재무·주석</span></button>
+  </div>
+  <div id="deepBody"></div>
+
+  <div class="b2b">
+    💼 <b>B2B 안내</b> — 전문가용 리포트는 향후 증권사·애널리스트·VC를 위한 기업용 구독(팀 단위)으로 확장됩니다. 커버리지 확대와 경쟁사 모니터링에 활용하세요.
+  </div>
+</main>
+
+
+<!-- ====== 소셜 로그인 / 회원가입 모달 ====== -->
+<div class="overlay" id="loginOverlay">
+  <div class="modal" style="max-width:400px;">
+    <button class="x" onclick="closeLogin()">×</button>
+
+    <!-- STEP 1: 소셜 로그인 선택 -->
+    <div id="loginStep1">
+      <div class="mkick">회원가입 · 무료 1회 추가</div>
+      <h3 style="margin-bottom:6px;">간편 로그인으로<br>계속 읽기</h3>
+      <p style="font-size:14px; color:var(--ink-soft); margin-bottom:24px;">
+        가입하면 오늘 자세히 보기 <b style="color:var(--up);">1회를 더 드려요.</b><br>30초면 완료돼요.
+      </p>
+
+      <!-- 소셜 로그인 버튼 4개 -->
+      <button class="social-btn" onclick="socialLogin('google')" style="--sc:#fff; --sc-border:#DADCE0; --sc-text:#3C4043;">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="20" height="20">
+        <span>Google로 계속하기</span>
+      </button>
+      <button class="social-btn" onclick="socialLogin('kakao')" style="--sc:#FEE500; --sc-border:#FEE500; --sc-text:#191919;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#191919"><path d="M12 3C6.48 3 2 6.58 2 11c0 2.84 1.73 5.34 4.35 6.9l-1.1 4.06a.5.5 0 0 0 .72.55L10.6 19.8A12.3 12.3 0 0 0 12 20c5.52 0 10-3.58 10-8S17.52 3 12 3z"/></svg>
+        <span>카카오로 계속하기</span>
+      </button>
+      <button class="social-btn" onclick="socialLogin('naver')" style="--sc:#03C75A; --sc-border:#03C75A; --sc-text:#fff;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M16.27 12.96L7.5 0H0v24h7.73V11.04L16.5 24H24V0h-7.73z"/></svg>
+        <span>네이버로 계속하기</span>
+      </button>
+      <button class="social-btn" onclick="socialLogin('apple')" style="--sc:#000; --sc-border:#000; --sc-text:#fff;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><path d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.8-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11"/></svg>
+        <span>Apple로 계속하기</span>
+      </button>
+
+      <p style="font-size:12px; color:var(--ink-soft); text-align:center; margin-top:18px; line-height:1.6;">
+        가입 시 <button onclick="showTerms()" style="color:var(--gold); font-size:12px; text-decoration:underline; background:none; cursor:pointer;">개인정보처리방침</button> 및 이용약관에 동의하게 됩니다.
+      </p>
+    </div>
+
+    <!-- STEP 2: 닉네임 설정 -->
+    <div id="loginStep2" style="display:none;">
+      <div class="mkick">마지막 단계</div>
+      <h3 style="margin-bottom:6px;">닉네임을 정해 주세요</h3>
+      <p style="font-size:14px; color:var(--ink-soft); margin-bottom:20px;">나중에 커뮤니티에서 사용할 이름이에요.</p>
+      <input id="nicknameInput" type="text" maxlength="12" placeholder="닉네임 입력 (최대 12자)"
+             style="width:100%; border:1.5px solid var(--line); border-radius:11px; padding:14px 16px;
+                    font-size:16px; font-family:inherit; color:var(--ink); background:var(--paper);
+                    outline:none; margin-bottom:14px;"
+             oninput="this.style.borderColor = this.value.length>1 ? 'var(--navy)' : 'var(--line)'"
+             onkeydown="if(event.key==='Enter') completeRegister()">
+      <div style="font-size:12px; color:var(--ink-soft); margin-bottom:18px;">영문/한글/숫자 사용 가능 · 욕설 사용 시 제재</div>
+      <button class="pay" onclick="completeRegister()">완료 — 자세히 보기 1회 받기 🎉</button>
+    </div>
+
+    <!-- STEP 3: 가입 완료 -->
+    <div id="loginStep3" style="display:none; text-align:center;">
+      <div style="font-size:48px; margin-bottom:16px;">🎉</div>
+      <h3 style="margin-bottom:8px;">가입 완료!</h3>
+      <p style="font-size:15px; color:var(--ink-soft); margin-bottom:22px;">
+        자세히 보기 <b style="color:var(--up);">1회가 추가</b>됐어요.<br>지금 바로 읽어보세요.
+      </p>
+      <button class="pay" onclick="closeLoginAndContinue()">지금 읽으러 가기 →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ====== 개인정보처리방침 모달 ====== -->
+<div class="overlay" id="termsOverlay" style="z-index:110;">
+  <div class="modal" style="max-width:480px; max-height:80vh; overflow-y:auto;">
+    <button class="x" onclick="closeTerms()">×</button>
+    <h3 style="margin-bottom:16px;">개인정보처리방침</h3>
+    <div style="font-size:14px; line-height:1.9; color:var(--ink-soft);">
+      <b style="color:var(--ink);">수집 항목</b><br>
+      소셜 로그인을 통해 이름(닉네임), 이메일 주소를 수집합니다.<br><br>
+      <b style="color:var(--ink);">수집 목적</b><br>
+      서비스 이용 기록 관리, 커뮤니티 기능 제공, 구독 서비스 운영<br><br>
+      <b style="color:var(--ink);">보관 기간</b><br>
+      회원 탈퇴 시까지 보관. 탈퇴 즉시 삭제.<br><br>
+      <b style="color:var(--ink);">제3자 제공</b><br>
+      어떠한 경우에도 개인정보를 제3자에게 판매하거나 제공하지 않습니다.<br><br>
+      <b style="color:var(--ink);">문의</b><br>
+      ckswnd0131@gmail.com
+    </div>
+    <button class="pay" onclick="closeTerms()" style="margin-top:20px;">확인</button>
+  </div>
+</div>
+
+<!-- ====== 결제 모달 ====== -->
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <button class="x" onclick="closePay()">×</button>
+    <div class="mkick">PREMIUM</div>
+    <h3>무제한으로 깊이 보기</h3>
+    <div class="msub">하루 1회 무료를 모두 쓰셨어요. 구독하면 모든 기업의 자세히 보기를 제한 없이 읽을 수 있어요.</div>
+
+    <div class="plan best" onclick="selectPlan(this,'year')">
+      <div>
+        <div class="pn">연간 구독</div>
+        <div class="pd">월 약 6,580원 · 가장 인기</div>
+      </div>
+      <div class="pp">79,000<small>원/년</small></div>
+    </div>
+    <div class="plan" onclick="selectPlan(this,'month')">
+      <div>
+        <div class="pn">월간 구독</div>
+        <div class="pd">언제든 해지 가능</div>
+      </div>
+      <div class="pp">9,900<small>원/월</small></div>
+    </div>
+
+    <button class="pay" onclick="fakePay()">구독 시작하기</button>
+    <div class="fineprint">데모 화면입니다 · 실제 결제는 이뤄지지 않아요<br>실제 서비스에서는 웹 직접 결제로 수수료 0%</div>
+  </div>
+</div>
+
+
+<!-- ====== DART 실시간 검색 결과 화면 ====== -->
+<main id="dart-results" class="wrap" style="display:none; padding:30px 0 80px;">
+  <button class="back" onclick="goHome()">← 홈으로</button>
+  <div class="toolbar" style="margin-top:0;">
+    <div class="section-title" id="dart-results-title">검색 결과</div>
+  </div>
+  <div class="grid" id="dart-results-list"></div>
+</main>
+
+<!-- ====== 공시 목록 화면 ====== -->
+<main id="disclosure-list" class="wrap" style="display:none; padding:30px 0 80px;">
+  <button class="back" id="disclosure-back" onclick="showSection('dart-results')">← 검색 결과로</button>
+  <div class="dhead">
+    <span class="sector" id="dl-sector"></span>
+    <h2 id="dl-name"></h2>
+    <div class="code" id="dl-code"></div>
+    <div class="summary-line" style="font-size:15px; border-left-color:var(--ink-soft);">
+      최근 1년간 공시 목록입니다. 공시를 클릭하면 AI가 핵심 내용을 요약해 드려요.
+    </div>
+  </div>
+  <div class="block" style="margin-top:28px;">
+    <div class="btitle">공시 목록</div>
+    <div id="dl-list"></div>
+  </div>
+</main>
+
+<!-- ====== 공시 상세 · AI 요약 화면 ====== -->
+<main id="disclosure-detail" class="wrap" style="display:none; padding:30px 0 80px;">
+  <button class="back" id="dd-back" onclick="showSection('disclosure-list')">← 공시 목록으로</button>
+  <div class="dhead" style="margin-bottom:28px;">
+    <span class="sector" style="background:var(--gold);color:#fff;">AI 요약</span>
+    <h2 id="dd-title" style="font-size:clamp(18px,3vw,26px); margin-top:10px;"></h2>
+    <div class="code" id="dd-meta"></div>
+  </div>
+
+  <!-- 로딩 상태 -->
+  <div id="dd-loading" style="text-align:center; padding:60px 0;">
+    <div style="font-size:40px; animation:spin 1.2s linear infinite; display:inline-block;">⏳</div>
+    <div style="font-size:17px; font-weight:600; margin-top:16px; color:var(--ink);">AI가 공시를 분석하는 중...</div>
+    <div style="font-size:14px; color:var(--ink-soft); margin-top:8px;">보통 10~30초 정도 걸려요</div>
+  </div>
+
+  <!-- 요약 결과 -->
+  <div id="dd-summary" style="display:none;"></div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<footer class="wrap">
+  공시한장 · 한 장으로 읽는 기업 공시 &nbsp;|&nbsp; 데모 프로토타입<br>
+  <span style="display:inline-block;margin-top:6px;">문의 &nbsp;<a href="mailto:ckswnd0131@gmail.com" style="color:var(--gold-soft);text-decoration:none;">ckswnd0131@gmail.com</a></span>
+</footer>
+
+<script>
+/* =========================================================
+   데이터 (데모용 예시 수치 — 실제 서비스에서는 DART에서 자동 수집)
+   ========================================================= */
+const COMPANIES = [
+  {
+    code:"005930", name:"삼성전자", sector:"반도체 · 전자",
+    cap:480, capTxt:"480조", growth:+398, pop:1,
+    oneliner:"메모리 반도체를 세계에서 가장 많이 만들고, 스마트폰·가전까지 아우르는 종합 전자기업.",
+    biz:[["반도체(DS)",42],["스마트폰·네트워크(MX)",34],["가전·디스플레이",18],["기타",6]],
+    profit:[["2022",43.4],["2023",6.6],["2024",32.7]],
+    general:{
+      lead:"삼성전자는 한마디로 '메모리 반도체로 돈을 버는 회사'입니다. 우리가 쓰는 거의 모든 전자기기 안에는 데이터를 저장하는 메모리 칩이 들어가는데, 그 칩을 세계에서 가장 많이 만드는 곳이 삼성전자입니다.",
+      structure:["사업은 크게 네 갈래입니다. ① 반도체(DS) — 회사의 심장이자 이익 대부분이 여기서 나옵니다. ② 스마트폰·네트워크(MX) — 갤럭시 시리즈. ③ 가전·디스플레이. ④ 기타.","최근 몇 년간 이익이 크게 출렁인 이유는 메모리 반도체 가격 때문입니다. 2023년 반도체 불황으로 이익이 급감했다가, 2024년 AI 열풍으로 메모리 수요가 살아나며 회복했습니다."],
+      growth:["성장의 핵심 키워드는 단 하나, 'AI'입니다. AI 데이터센터가 늘어날수록 고성능 메모리(HBM) 수요가 폭발합니다.","삼성전자는 이 HBM 시장에서 경쟁사를 추격하는 입장이라, 따라잡는 속도가 곧 주가의 방향이 됩니다."],
+      risk:["메모리 가격에 이익이 크게 좌우돼 실적 변동성이 큽니다.","HBM 등 첨단 메모리에서 경쟁사에 주도권을 내준 상태이며, 파운드리(위탁생산)에서도 대만 TSMC와 격차가 있습니다."],
+      verdict:"AI 메모리 수요라는 거대한 순풍을 탔지만, 그 바람을 경쟁사보다 잘 타느냐가 관건인 회사."
+    },
+    expert:{
+      fin:[["구분","2023(제55기)","2024(제56기)","2025(제57기)"],["매출액","258.9조","302.0조","333.6조"],["영업이익","6.6조","32.7조","43.4조"],["영업이익률","2.5%","10.9%","13.0%"],["DS부문 영업이익","-14.9조","15.1조","24.9조"]],
+      notes:["주석상 반도체 부문(DS) 재고자산이 2023년 정점 이후 감소세로 전환 — 업황 회복 신호로 해석됩니다.","연구개발비는 매출의 9% 내외로 꾸준히 집행되며, HBM·파운드리 첨단공정에 집중 배분되고 있습니다."],
+      audit:"감사인은 적정의견을 제시했으며, 핵심감사사항(KAM)으로 재고자산 평가와 반도체 부문 영업권 손상 여부가 다뤄졌습니다."
+    }
+  },
+  {
+    code:"000660", name:"SK하이닉스", sector:"반도체",
+    cap:160, capTxt:"160조", growth:+1120, pop:2,
+    oneliner:"AI 시대의 핵심 부품인 고대역폭 메모리(HBM)에서 세계 1위를 달리는 메모리 반도체 전문기업.",
+    biz:[["D램(HBM 포함)",68],["낸드플래시",27],["기타",5]],
+    profit:[["2022",7.0],["2023",-7.7],["2024",23.5]],
+    general:{
+      lead:"SK하이닉스는 '메모리 반도체만 깊게 파는 회사'입니다. 특히 요즘 가장 뜨거운 AI 반도체에 꼭 들어가는 HBM이라는 특수 메모리에서 세계 1위입니다.",
+      structure:["사업은 D램과 낸드플래시 두 축인데, 이익의 핵심은 D램, 그중에서도 HBM입니다.","엔비디아의 AI 칩에 SK하이닉스 HBM이 들어가면서, 'AI가 잘 될수록 SK하이닉스가 잘 되는' 구조가 만들어졌습니다."],
+      growth:["AI 데이터센터 투자가 계속되는 한 HBM 수요는 늘어납니다. 현재 가장 직접적으로 AI 수혜를 받는 한국 기업으로 꼽힙니다.","2023년 적자에서 2024년 사상 최대 흑자로 돌아선 회복 탄력이 매우 강합니다."],
+      risk:["메모리 한 분야에 집중돼 있어 업황이 꺾이면 충격도 큽니다(2023년 대규모 적자 경험).","경쟁사들이 HBM 시장에 본격 진입하면 현재의 압도적 우위가 좁혀질 수 있습니다."],
+      verdict:"AI 수혜를 가장 직접적으로 받는 회사. 단, 메모리 한 우물이라 호황과 불황의 진폭이 크다는 점은 늘 염두에 둘 것."
+    },
+    expert:{
+      fin:[["구분","2022","2023","2024"],["매출액","44.6조","32.8조","66.2조"],["영업이익","7.0조","-7.7조","23.5조"],["영업이익률","15.7%","-23.5%","35.5%"],["당기순이익","2.4조","-9.1조","19.8조"]],
+      notes:["HBM 매출 비중 확대로 D램 평균판매단가(ASP)가 큰 폭 상승했습니다.","2023년 적자 구간에서 설비투자(CAPEX)를 축소했다가, 2024년 HBM 증설 중심으로 재확대했습니다."],
+      audit:"적정의견. 핵심감사사항으로 재고자산 평가 및 개발 중 기술자산의 회수가능성이 검토되었습니다."
+    }
+  },
+  {
+    code:"012450", name:"한화에어로스페이스", sector:"방산 · 항공엔진",
+    cap:42, capTxt:"42조", growth:+89, pop:3,
+    oneliner:"K9 자주포·장갑차 등 무기체계와 항공기 엔진을 만드는 국내 대표 방산기업.",
+    biz:[["지상방산(자주포·장갑차)",55],["항공엔진",22],["우주·기타",23]],
+    profit:[["2022",0.36],["2023",0.69],["2024",1.31]],
+    general:{
+      lead:"한화에어로스페이스는 '무기를 만들어 수출하는 회사'입니다. 대표 제품인 K9 자주포는 전 세계 여러 나라가 사 가는 한국의 간판 수출 무기입니다.",
+      structure:["사업은 지상 무기(자주포·장갑차)가 중심이고, 항공기 엔진과 우주 발사체 사업도 함께 합니다.","전쟁·안보 불안이 커지면서 유럽·중동 국가들이 한국 무기를 대량으로 사들이는 흐름의 직접 수혜를 받고 있습니다."],
+      growth:["폴란드 등과 맺은 대규모 수출 계약이 향후 몇 년간 실적으로 잡힙니다. 이미 받아둔 주문(수주잔고)이 매우 두텁습니다.","방산은 한 번 계약하면 부품·정비까지 길게 매출이 이어져 안정적입니다."],
+      risk:["수출이 정부 간 협상·정세에 좌우돼 계약 지연 가능성이 있습니다.","환율과 원자재 가격에 수익성이 영향을 받습니다."],
+      verdict:"두터운 수주잔고가 깔린 구조적 성장주. 다만 실적이 국제 정세라는 통제 불가 변수에 묶여 있다는 점이 양날의 검."
+    },
+    expert:{
+      fin:[["구분","2022","2023","2024"],["매출액","6.5조","9.4조","11.3조"],["영업이익","0.36조","0.69조","1.31조"],["영업이익률","5.5%","7.3%","11.6%"],["수주잔고","19조","30조","대폭 증가"]],
+      notes:["주석상 장기공급계약 관련 계약자산·선수금이 크게 증가 — 향후 매출 인식의 가시성이 높습니다.","폴란드향 계약의 이행 단계에 따라 분기별 매출 변동성이 존재합니다."],
+      audit:"적정의견. 핵심감사사항으로 장기공사계약의 진행률 수익인식 추정이 다뤄졌습니다."
+    }
+  },
+  {
+    code:"035420", name:"NAVER", sector:"인터넷 · 플랫폼",
+    cap:32, capTxt:"32조", growth:+18, pop:4,
+    oneliner:"검색 포털을 기반으로 광고·커머스·핀테크·웹툰까지 확장한 한국 대표 인터넷 플랫폼.",
+    biz:[["서치플랫폼(검색·광고)",38],["커머스",27],["핀테크",18],["콘텐츠·클라우드",17]],
+    profit:[["2022",1.30],["2023",1.49],["2024",1.98]],
+    general:{
+      lead:"NAVER는 '사람들의 시간을 모아 돈으로 바꾸는 회사'입니다. 검색·쇼핑·웹툰·페이 등 사람들이 매일 쓰는 서비스를 모아두고, 그 위에서 광고와 수수료로 수익을 냅니다.",
+      structure:["가장 큰 돈줄은 검색과 광고이고, 쇼핑(커머스)과 네이버페이(핀테크)가 빠르게 따라붙고 있습니다.","웹툰은 글로벌로 확장 중이며, AI 검색을 자사 서비스 전반에 붙이는 작업을 진행하고 있습니다."],
+      growth:["커머스와 핀테크가 견조하게 성장하며 광고 의존도를 낮추고 있습니다.","AI를 검색·광고·쇼핑에 접목해 효율을 끌어올리는 것이 다음 성장 동력입니다."],
+      risk:["검색·광고 매출이 경기에 민감합니다.","구글 등 글로벌 빅테크 및 AI 검색의 등장이 본업을 위협할 수 있습니다."],
+      verdict:"안정적인 본업 위에 커머스·핀테크라는 성장축을 얹은 균형형 플랫폼. AI 전환을 얼마나 매끄럽게 해내느냐가 다음 챕터."
+    },
+    expert:{
+      fin:[["구분","2022","2023","2024"],["매출액","8.2조","9.7조","10.7조"],["영업이익","1.30조","1.49조","1.98조"],["영업이익률","15.9%","15.3%","18.5%"],["당기순이익","6.6조","1.0조","1.1조"]],
+      notes:["커머스·핀테크 거래액(GMV) 증가가 수수료 매출 성장을 견인했습니다.","2022년 순이익은 일회성 처분이익이 반영된 것으로, 본업 추세와 분리해 볼 필요가 있습니다."],
+      audit:"적정의견. 핵심감사사항으로 영업권 손상평가 및 종속·관계기업 투자 평가가 검토되었습니다."
+    }
+  },
+  {
+    code:"005380", name:"현대차", sector:"자동차",
+    cap:50, capTxt:"50조", growth:+54, pop:5,
+    oneliner:"내연기관부터 전기차·수소차까지 만드는 글로벌 완성차 기업. 미국 시장에서 특히 강하다.",
+    biz:[["차량 판매",78],["금융(할부·리스)",16],["기타",6]],
+    profit:[["2022",9.8],["2023",15.1],["2024",14.2]],
+    general:{
+      lead:"현대차는 '차를 만들어 전 세계에 파는 회사'입니다. 단순한 가성비 브랜드를 넘어, 미국·유럽에서 품질과 디자인으로 인정받는 단계까지 올라왔습니다.",
+      structure:["대부분의 매출은 차량 판매에서 나오고, 할부·리스 같은 금융 사업이 이익을 보태줍니다.","전기차 전용 모델(아이오닉)과 고급 브랜드(제네시스)로 평균 판매가격을 높이는 전략을 쓰고 있습니다."],
+      growth:["미국에서 친환경차·SUV가 잘 팔리며 수익성이 좋아졌습니다.","전기차 캐즘(일시적 수요 둔화) 속에서도 하이브리드로 유연하게 대응하고 있습니다."],
+      risk:["미국 관세·통상 정책 변화에 실적이 크게 흔들릴 수 있습니다.","전기차 전환 속도와 중국 업체의 저가 공세가 변수입니다."],
+      verdict:"브랜드가 한 단계 올라선 글로벌 완성차. 다만 매출의 상당 부분이 미국에 쏠려 있어 통상 정책 리스크를 늘 안고 간다."
+    },
+    expert:{
+      fin:[["구분","2022","2023","2024"],["매출액","142.5조","162.7조","175.2조"],["영업이익","9.8조","15.1조","14.2조"],["영업이익률","6.9%","9.3%","8.1%"],["당기순이익","7.9조","12.3조","13.2조"]],
+      notes:["주석상 미국 시장 평균판매단가(ASP) 상승과 우호적 환율이 수익성 개선에 기여했습니다.","전기차 관련 충당부채 및 보증비용 추이를 함께 살펴볼 필요가 있습니다."],
+      audit:"적정의견. 핵심감사사항으로 판매보증충당부채 추정 및 금융부문 대손충당금이 다뤄졌습니다."
+    }
+  },
+  {
+    code:"247540", name:"에코프로비엠", sector:"2차전지 소재",
+    cap:14, capTxt:"14조", growth:-62, pop:6,
+    oneliner:"전기차 배터리의 핵심 재료인 양극재를 만드는 2차전지 소재 전문기업.",
+    biz:[["하이니켈 양극재",92],["기타 소재",8]],
+    profit:[["2022",0.38],["2023",0.15],["2024",0.06]],
+    general:{
+      lead:"에코프로비엠은 '전기차 배터리의 재료를 만드는 회사'입니다. 배터리에서 가장 비싸고 중요한 부품인 양극재를 전문으로 만듭니다.",
+      structure:["사실상 양극재 한 제품에 집중된 구조입니다. 그래서 전기차 시장의 흐름을 그대로 받습니다.","주요 고객사(배터리 제조사)와 장기 공급 관계를 맺고 함께 성장해 왔습니다."],
+      growth:["장기적으로 전기차가 늘면 양극재 수요도 늘어나는 명확한 성장 스토리가 있습니다.","다만 지금은 전기차 수요 둔화(캐즘)와 원자재 가격 하락으로 단기 실적이 크게 꺾인 구간입니다."],
+      risk:["전기차 수요 둔화에 실적이 직격탄을 맞습니다(최근 이익 급감).","리튬 등 원자재 가격 변동이 수익성을 크게 좌우합니다.","단일 제품 의존도가 높습니다."],
+      verdict:"전기차의 미래에 베팅하는 성장주이지만, 지금은 혹독한 겨울을 지나는 중. 수요 회복 시점이 곧 반등의 열쇠."
+    },
+    expert:{
+      fin:[["구분","2022","2023","2024"],["매출액","5.3조","6.9조","2.9조"],["영업이익","0.38조","0.15조","0.06조"],["영업이익률","7.2%","2.2%","2.1%"],["당기순이익","0.28조","0.09조","적자전환"]],
+      notes:["주석상 원재료(리튬) 가격 급락으로 재고자산평가손실이 발생했습니다.","대규모 증설 투자가 진행 중이라 가동률 회복 전까지 고정비 부담이 있습니다."],
+      audit:"적정의견. 핵심감사사항으로 재고자산 평가 및 유형자산 손상 징후가 검토되었습니다."
+    }
+  }
+];
+
+/* =========================================================
+   상태
+   ========================================================= */
+/* =========================================================
+   localStorage 기반 상태 관리
+   - 24시간 무료 이용권 (창 닫아도 유지)
+   - 열람한 리포트 캐시 (창 닫아도 유지, 24시간)
+   - 회원 정보 (닉네임, 소셜 로그인 타입)
+   ========================================================= */
+
+const LS = {
+  FREE : 'gsh_free',          // 무료 이용 기록
+  CACHE: 'gsh_cache_',        // 리포트 캐시 prefix
+  USER : 'gsh_user',          // 회원 정보
+};
+const FREE_PER_DAY    = 1;    // 비회원 하루 무료 횟수
+const FREE_AFTER_JOIN = 1;    // 회원가입 후 추가 무료 횟수
+const CACHE_TTL       = 24 * 60 * 60 * 1000;  // 24시간 (ms)
+
+/* ── 무료 이용권 관리 ── */
+function getFreeData() {
+  try {
+    const d = JSON.parse(localStorage.getItem(LS.FREE) || '{}');
+    const today = new Date().toDateString();
+    if (d.date !== today) return { date: today, viewed: [], bonusUsed: false };
+    return d;
+  } catch { return { date: new Date().toDateString(), viewed: [], bonusUsed: false }; }
+}
+function saveFreeData(d) {
+  try { localStorage.setItem(LS.FREE, JSON.stringify(d)); } catch {}
+}
+
+/* 이 rcptNo를 오늘 이미 열람했는가? */
+function hasViewed(rcptNo) {
+  return getFreeData().viewed.includes(String(rcptNo));
+}
+
+/* 오늘 남은 무료 횟수 */
+function getFreeLeft() {
+  const d    = getFreeData();
+  const user = getUser();
+  const max  = user ? FREE_PER_DAY + FREE_AFTER_JOIN : FREE_PER_DAY;
+  return Math.max(0, max - d.viewed.length);
+}
+
+/* 열람 기록에 추가 */
+function markViewed(rcptNo) {
+  const d = getFreeData();
+  if (!d.viewed.includes(String(rcptNo))) d.viewed.push(String(rcptNo));
+  saveFreeData(d);
+  updateFreePill();
+}
+
+/* ── 리포트 캐시 (24시간) ── */
+function cacheReport(rcptNo, mode, data) {
+  try {
+    localStorage.setItem(LS.CACHE + rcptNo + '_' + mode,
+      JSON.stringify({ data, ts: Date.now() }));
+  } catch {}
+}
+function getCached(rcptNo, mode) {
+  try {
+    const item = JSON.parse(localStorage.getItem(LS.CACHE + rcptNo + '_' + mode) || 'null');
+    if (!item || Date.now() - item.ts > CACHE_TTL) return null;
+    return item.data;
+  } catch { return null; }
+}
+
+/* ── 회원 정보 ── */
+function getUser() {
+  try { return JSON.parse(localStorage.getItem(LS.USER) || 'null'); } catch { return null; }
+}
+function saveUser(user) {
+  try { localStorage.setItem(LS.USER, JSON.stringify(user)); } catch {}
+}
+
+/* ── 기존 호환용 state ── */
+let state = { sort:"popular", current:null, deepTab:"general", selectedPlan:"year" };
+Object.defineProperty(state, 'freeLeft', {
+  get: () => getFreeLeft(),
+  set: () => {} // 기존 코드 호환 (freeLeft-- 등 무시)
+});
+
+/* =========================================================
+   홈 — 리스트 렌더링
+   ========================================================= */
+function sortedCompanies(filter){
+  let arr = COMPANIES.slice();
+  if(filter){ const q=filter.trim(); arr=arr.filter(c=>c.name.includes(q)||c.sector.includes(q)); }
+  if(state.sort==="cap") arr.sort((a,b)=>b.cap-a.cap);
+  else if(state.sort==="growth") arr.sort((a,b)=>b.growth-a.growth);
+  else arr.sort((a,b)=>a.pop-b.pop);
+  return arr;
+}
+
+function renderList(filter){
+  const el=document.getElementById("list");
+  const arr=sortedCompanies(filter);
+  if(arr.length===0){ el.innerHTML='<div style="grid-column:1/-1; color:var(--ink-soft); padding:30px 0;">검색 결과가 없어요. 다른 회사 이름을 입력해 보세요.</div>'; return; }
+  el.innerHTML=arr.map((c,i)=>{
+    const max=Math.max(...c.profit.map(p=>Math.abs(p[1])));
+    const spark=c.profit.map(p=>{
+      const h=Math.max(6, Math.round(Math.abs(p[1])/max*34));
+      return `<span style="height:${h}px;${p[1]<0?'background:var(--down);opacity:.6;':''}"></span>`;
+    }).join("");
+    const gcls=c.growth>=0?"up":"down";
+    const gtxt=(c.growth>=0?"▲ ":"▼ ")+Math.abs(c.growth)+"%";
+    return `<div class="card fade" style="animation-delay:${i*0.05}s" onclick="openDetail('${c.code}')">
+      <div class="rank">${i+1}</div>
+      <div class="cname">${c.name}</div>
+      <div class="ccode">${c.code} · KOSPI</div>
+      <div class="sector">${c.sector}</div>
+      <div class="oneliner">${c.oneliner}</div>
+      <div class="stats">
+        <div class="stat"><div class="lbl">시가총액</div><div class="val">${c.capTxt}</div></div>
+        <div class="stat"><div class="lbl">영업이익 성장</div><div class="val ${gcls}">${gtxt}</div></div>
+        <div class="spark">${spark}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function setSort(s){
+  state.sort=s;
+  document.querySelectorAll(".sorts button").forEach(b=>b.classList.toggle("on", b.dataset.sort===s));
+  renderList(document.getElementById("search").value);
+}
+function filterList(v){ renderList(v); }
+
+/* =========================================================
+   화면 전환
+   ========================================================= */
+const ALL_SECTIONS = ["home","detail","deep","dart-results","disclosure-list","disclosure-detail"];
+
+function show(id){
+  ALL_SECTIONS.forEach(x=>{
+    const el = document.getElementById(x);
+    if(el) el.style.display = (x===id) ? "block" : "none";
+  });
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function showSection(id){ show(id); }
+function goHome(){ state.current=null; show("home"); }
+
+/* =========================================================
+   기업 상세 (간단 요약)
+   ========================================================= */
+function openDetail(code){
+  const c=COMPANIES.find(x=>x.code===code); state.current=c;
+  document.getElementById("d_sector").textContent=c.sector;
+  document.getElementById("d_name").textContent=c.name;
+  document.getElementById("d_code").textContent=c.code+" · KOSPI · "+c.capTxt;
+  document.getElementById("d_oneliner").textContent=c.oneliner;
+
+  // 사업 비중
+  document.getElementById("d_biz").innerHTML=c.biz.map(b=>`
+    <div class="bizbar">
+      <div class="row"><b>${b[0]}</b><span>${b[1]}%</span></div>
+      <div class="track"><div class="fill" style="width:0%" data-w="${b[1]}"></div></div>
+    </div>`).join("");
+
+  // 영업이익 추이
+  const max=Math.max(...c.profit.map(p=>Math.abs(p[1])));
+  document.getElementById("d_profit").innerHTML=c.profit.map(p=>{
+    const h=Math.max(8, Math.round(Math.abs(p[1])/max*110));
+    const neg=p[1]<0;
+    return `<div class="col">
+      <div class="amt" style="color:${neg?'var(--down)':'var(--ink)'}">${p[1]}조</div>
+      <div class="bar" style="height:0px; ${neg?'background:linear-gradient(180deg,var(--down),#4d82d8);':''}" data-h="${h}"></div>
+      <div class="yr">${p[0]}</div>
+    </div>`;
+  }).join("");
+
+  document.getElementById("d_freecnt").textContent = state.freeLeft>0
+    ? `오늘 무료 자세히 보기 ${state.freeLeft}회 남음`
+    : `오늘 무료 횟수를 모두 사용했어요 · 구독 시 무제한`;
+
+  show("detail");
+  // 막대 애니메이션
+  setTimeout(()=>{
+    document.querySelectorAll("#d_biz .fill").forEach(f=>f.style.width=f.dataset.w+"%");
+    document.querySelectorAll("#d_profit .bar").forEach(b=>b.style.height=b.dataset.h+"px");
+  },80);
+}
+
+/* =========================================================
+   자세히 보기 (일반인용 / 전문가용)
+   ========================================================= */
+function openDeep(){
+  if(state.freeLeft<=0){
+    // 회원가입 유도 먼저, 이미 회원이면 결제 모달
+    if(!getUser()) { openLogin(); } else { openPay(); }
+    return;
+  }
+  if(state.current) markViewed('demo_' + state.current.code);
+  state.deepTab="general";
+  syncDeepTabs();
+  renderDeep();
+  show("deep");
+}
+function backToDetail(){ if(state.current) openDetail(state.current.code); }
+
+function setDeepTab(t){ state.deepTab=t; syncDeepTabs(); renderDeep(); }
+function syncDeepTabs(){
+  document.getElementById("tab_g").classList.toggle("on", state.deepTab==="general");
+  document.getElementById("tab_e").classList.toggle("on", state.deepTab==="expert");
+}
+
+const SAMSUNG_REPORT=`
+<div class=\'report fade\'>
+  <div class=\'rkick\'>전문가 심층 리포트 · 사업보고서 원문 기반 · 공시한장 리서치</div>
+  <h3>삼성전자 2025 심층 분석</h3>
+  <p style=\'font-size:13px; color:var(--ink-soft); margin-bottom:6px;\'>
+    기준일: 2026.03.10 | 출처: 제57기 사업보고서 | 분석가 노트 형식
+  </p>
+  <div class=\'note\' style=\'margin-bottom:28px; border-left:3px solid var(--up); border-radius:0 10px 10px 0;\'>
+    <b style=\'color:var(--up);\'>애널리스트 노트</b><br>
+    이 리포트를 읽는 당신이 삼성전자 커버리지를 맡은 첫 날이라고 생각하고 썼다.
+    573페이지 사업보고서에서 진짜로 중요한 것만 골랐다.
+    끝까지 읽으면 삼성전자를 이해하는 데 필요한 것의 80%는 갖추게 된다.
+    나머지 20%는 경험에서 온다.
+  </div>
+
+  <h4>I. 삼성전자를 이해하는 세 가지 관점</h4>
+  <p class=\'lead\'>
+    삼성전자를 처음 보는 사람들이 흔히 하는 실수가 있다.
+    "스마트폰 만드는 회사 아닌가요?"라고 단순화하는 것이다.
+    틀리진 않지만, 이 회사의 진짜 얼굴을 절반도 못 본 것이다.
+  </p>
+  <p>
+    <b>첫째, 삼성전자는 반도체 회사다.</b>
+    2025년 기준 전체 영업이익의 57%가 DS(반도체) 부문 하나에서 나왔다.
+    스마트폰(MX)과 가전(VD/DA)을 모두 합친 DX부문의 이익이 29.5%인 것과 비교하면,
+    이 회사의 진짜 캐시카우가 어디인지 분명해진다.
+    반도체 경기가 삼성전자의 주가를 결정한다는 말이 여기서 나온다.
+  </p>
+  <p>
+    <b>둘째, 삼성전자는 사이클이 극심한 회사다.</b>
+    2023년 DS부문 영업이익은 -14조 8,795억원이었다. 적자다. 그런데 2025년에는 +24조 8,581억원이다.
+    2년 만에 39조 이상이 뒤바뀐 것이다.
+    반도체 업황이 이 회사에 어떤 영향을 미치는지를 보여주는 가장 극단적인 사례다.
+    주니어 애널리스트라면 이 숫자를 반드시 외워둬야 한다.
+  </p>
+  <p>
+    <b>셋째, 삼성전자는 지금 변곡점에 있다.</b>
+    AI 반도체 시대가 열리면서 메모리 수요 구조 자체가 바뀌고 있다.
+    HBM(High Bandwidth Memory), AI 서버용 DRAM, 파운드리 선단공정 수요가 폭발하는 중이다.
+    삼성이 이 파도를 올라탈지, 아니면 SK하이닉스·TSMC에 뒤처질지가
+    향후 3~5년의 핵심 투자 질문이다.
+  </p>
+
+  <h4>II. 사업 구조 완전 해부 — 4개의 엔진</h4>
+  <p>
+    삼성전자는 4개의 사업부문으로 구성된다. 각 부문을 독립된 회사라고 생각하면 이해가 쉽다.
+  </p>
+  <table class=\'ftable\'>
+    <thead><tr><th>부문</th><th>2025 매출</th><th>비중</th><th>2025 영업이익</th><th>이익 비중</th></tr></thead>
+    <tbody>
+      <tr><td><b>DX부문</b> (스마트폰·가전)</td><td>187조 9,673억</td><td>56.3%</td><td>12조 8,527억</td><td>29.5%</td></tr>
+      <tr><td><b>DS부문</b> (반도체)</td><td>130조 1,282억</td><td>39.0%</td><td>24조 8,581억</td><td>57.0%</td></tr>
+      <tr><td><b>SDC</b> (디스플레이)</td><td>29조 8,417억</td><td>8.9%</td><td>4조 1,163억</td><td>9.4%</td></tr>
+      <tr><td><b>Harman</b> (전장·오디오)</td><td>15조 7,833억</td><td>4.7%</td><td>1조 5,311억</td><td>3.5%</td></tr>
+    </tbody>
+  </table>
+  <div class=\'note\'>
+    ※ 부문 간 내부거래 포함 수치. 연결 기준 총매출 333조 6,059억원, 총영업이익 약 43조 3,582억원.
+    부문 합산이 연결과 다를 수 있음.
+  </div>
+  <p>
+    <b>DX부문 안에는 두 개의 사업이 있다.</b>
+    MX(Mobile eXperience) — 갤럭시 스마트폰과 태블릿, 웨어러블을 만드는 곳이다.
+    VD/DA — TV, 냉장고, 에어컨, 세탁기를 만드는 생활가전 부문이다.
+    이 두 사업은 성격이 완전히 다르다. MX는 프리미엄 스마트폰 경쟁이 치열하고,
+    VD/DA는 글로벌 시장 점유율 1위를 오래 지켜온 안정적인 사업이다.
+  </p>
+  <p>
+    <b>DS부문도 두 개로 나뉜다.</b>
+    메모리(DRAM + NAND Flash) — 삼성의 핵심 이익원.
+    파운드리(시스템반도체 위탁생산) — 지금은 TSMC와의 격차를 좁히는 중.
+    이 두 사업이 DS 내에서 어떻게 돌아가는지를 아는 것이 삼성 분석의 핵심이다.
+  </p>
+
+  <h4>III. 2025년 실적 완전 분석 — 숫자가 말하는 것</h4>
+  <table class=\'ftable\'>
+    <thead><tr><th>구분</th><th>2023 (제55기)</th><th>2024 (제56기)</th><th>2025 (제57기)</th><th>YoY</th></tr></thead>
+    <tbody>
+      <tr><td>연결 매출액</td><td>258.9조</td><td>302.0조</td><td>333.6조</td><td style=\'color:var(--up)\'>+10.9%</td></tr>
+      <tr><td>DS부문 매출</td><td>66.6조</td><td>111.1조</td><td>130.1조</td><td style=\'color:var(--up)\'>+17.1%</td></tr>
+      <tr><td>DS부문 영업이익</td><td style=\'color:var(--down)\'>-14.9조</td><td>15.1조</td><td>24.9조</td><td style=\'color:var(--up)\'>+64.7%</td></tr>
+      <tr><td>DX부문 매출</td><td>170.0조</td><td>174.9조</td><td>187.9조</td><td style=\'color:var(--up)\'>+7.4%</td></tr>
+      <tr><td>DX부문 영업이익</td><td>14.4조</td><td>12.4조</td><td>12.9조</td><td style=\'color:var(--up)\'>+3.3%</td></tr>
+      <tr><td>연구개발비</td><td>-</td><td>-</td><td>37.8조</td><td>매출의 11.3%</td></tr>
+    </tbody>
+  </table>
+  <p>
+    2025년 실적에서 핵심은 단 하나다. DS부문의 극적인 회복이다.
+    2023년 -14.9조 적자에서 2025년 +24.9조 흑자로.
+    이 숫자가 삼성전자 2025년 실적의 전부를 설명한다고 해도 과언이 아니다.
+  </p>
+  <p>
+    DX부문은 2023년 대비 영업이익이 소폭 감소한 후 2025년에 회복세를 보였지만,
+    성장 모멘텀은 DS에 비해 제한적이다.
+    스마트폰 시장 자체의 성숙(전 세계 출하량 약 11.9억대 수준 유지)과
+    애플과의 프리미엄 경쟁이 DX 마진을 압박하는 구조는 여전하다.
+  </p>
+
+  <h4>IV. DS부문 심층 분석 — 이것이 이 회사의 심장이다</h4>
+  <p class=\'lead\'>
+    DS부문을 모르면 삼성전자를 분석한다고 할 수 없다.
+    영업이익의 57%가 여기서 나오고, 주가의 방향도 여기서 결정된다.
+  </p>
+
+  <h4 style=\'font-size:17px; border-bottom:none; padding-bottom:0; margin-bottom:8px;\'>① 메모리 반도체 — DRAM과 NAND Flash</h4>
+  <p>
+    메모리 반도체는 데이터를 임시로 저장하는(DRAM) 혹은 영구 저장하는(NAND Flash) 칩이다.
+    스마트폰, PC, 서버, 자동차 — 세상 모든 전자기기에 들어간다.
+    삼성전자는 이 시장에서 글로벌 1위다.
+  </p>
+  <p>
+    DRAM 시장점유율(금액 기준, DRAMeXchange 기준): 삼성전자가 1위 자리를 유지하고 있다.
+    그러나 최근 몇 년간 가장 중요한 변화가 생겼다.
+    AI 서버 확산으로 인해 수요 구조가 완전히 바뀐 것이다.
+    단순한 PC용, 스마트폰용 DRAM이 아니라 — AI 데이터센터용 고성능 DRAM 수요가 폭발했다.
+    그 중심에 있는 것이 HBM(High Bandwidth Memory)이다.
+  </p>
+
+  <h4 style=\'font-size:17px; border-bottom:none; padding-bottom:0; margin-bottom:8px;\'>② HBM 전쟁 — 지금 어디 서 있나</h4>
+  <p>
+    HBM은 DRAM 칩을 여러 층으로 쌓아 올려 대역폭을 극대화한 고성능 메모리다.
+    엔비디아 GPU, AMD GPU에 필수적으로 들어가며,
+    AI 모델 학습·추론에 없어서는 안 되는 부품이다.
+  </p>
+  <p>
+    문제는, 이 HBM 시장에서 삼성전자가 SK하이닉스에 주도권을 내준 상태라는 점이다.
+    SK하이닉스는 HBM3E 공급에서 엔비디아의 주력 파트너로 자리 잡았고,
+    삼성전자는 엔비디아 HBM 품질 테스트를 통과하는 데 어려움을 겪은 것으로 알려졌다.
+    사업보고서는 이를 직접 명시하지 않지만, 2025년 4분기 실적 컨퍼런스 내용과
+    DS부문 HBM 판매 확대 전략을 언급한 부분에서 이 상황이 묻어난다.
+  </p>
+  <p>
+    사업보고서의 핵심 문구를 주목하자.
+    "2026년에도 AI 수요 강세는 지속될 것으로 예상됩니다.
+    특히 서버 응용에서 고성능 HBM4 시장 본격화와 더불어,
+    서버향 DRAM의 고용량화가 가속화될 전망이며..."
+    삼성전자는 HBM4를 통해 반격을 준비하고 있다.
+    타이밍이 관건이다.
+  </p>
+  <div class=\'note\'>
+    <b>주니어 애널리스트를 위한 한 줄 정리:</b>
+    HBM4 출시 일정과 엔비디아 퀄 테스트 통과 여부가 삼성전자 DS부문 2026년 실적을
+    결정하는 가장 중요한 단 하나의 변수다. 이 뉴스를 항상 추적하라.
+  </div>
+
+  <h4 style=\'font-size:17px; border-bottom:none; padding-bottom:0; margin-bottom:8px;\'>③ 파운드리 — 거대한 도전</h4>
+  <p>
+    파운드리는 팹리스(Fabless) 회사들이 설계한 반도체를 대신 생산해주는 사업이다.
+    삼성전자는 자사 브랜드 메모리도 만들고, 남의 칩도 대신 만들어준다.
+    애플, 엔비디아, AMD의 칩을 TSMC가 독점하다시피 만드는 것처럼,
+    삼성 파운드리도 그 시장을 노리고 있다.
+  </p>
+  <p>
+    2025년 파운드리 시장에서 주목할 성과는
+    업계 최초 2나노 GAA(Gate-All-Around) 공정 기반 \'엑시노스 2600\' 출시다.
+    GAA는 기존 FinFET 대비 전력효율과 성능을 획기적으로 높인 차세대 트랜지스터 구조로,
+    삼성이 TSMC보다 앞서 2nm GAA 양산에 성공한 점은 기술적으로 의미가 크다.
+  </p>
+  <p>
+    다만 냉정하게 보면, 파운드리 수율(Yield)과 고객 신뢰도 면에서
+    삼성 파운드리가 TSMC를 단기간에 따라잡기는 쉽지 않다.
+    2025년 파운드리 시장에서 AI·HPC향 선단공정 수요 호조가 지속됐지만,
+    Mature(성숙) 공정은 중국 경쟁사들의 저가 공세로 수요가 약화됐다.
+    파운드리는 삼성에게 중장기 성장 옵션이지, 지금 당장의 이익 엔진은 아니다.
+  </p>
+
+  <h4>V. DX부문 분석 — 안정적이지만 질문이 남는 곳</h4>
+  <p>
+    DX부문의 2025년 영업이익률은 약 6.8%(12.9조/187.9조)다.
+    DS부문의 19.1%(24.9조/130.1조)에 비하면 낮은 편이다.
+    그럼에도 DX부문은 삼성전자에서 매우 중요한 역할을 한다.
+    DS가 사이클을 탈 때, DX가 현금흐름의 안정판 역할을 해주기 때문이다.
+  </p>
+  <p>
+    <b>스마트폰(MX):</b> 2025년 2월 Galaxy S25 시리즈를 출시했다.
+    \'Galaxy AI\' 기능을 대폭 강화한 것이 특징으로,
+    생성형 AI 기반 검색, 실시간 통번역, 자동 내용 요약, 사진 편집 등이 탑재됐다.
+    특히 통합형 AI 플랫폼 \'One UI 7\'이 적용되어 개인화된 경험을 구현했다.
+    스마트폰 시장 전체 수요는 11.9억대 수준으로 정체돼 있으나,
+    AI 기능 차별화와 폴더블 시장 확대가 프리미엄 믹스 개선의 열쇠다.
+  </p>
+  <p>
+    <b>TV·가전(VD/DA):</b> AI TV 라인업을 2025년 9개 시리즈 34개 모델에서
+    2026년 11개 시리즈 58개 모델로 크게 확대했다.
+    \'AI 홈\', \'AI 어시스턴트\', \'AI 시청 최적화\'를 3대 핵심 기능으로 내세웠다.
+    TV 시장에서의 글로벌 1위 위상은 유지되고 있으나,
+    중국 TV 업체들의 저가 공세는 중저가 시장에서 압박 요인으로 작용하고 있다.
+  </p>
+
+  <h4>VI. SDC & Harman — 서포터들의 이야기</h4>
+  <p>
+    <b>SDC(삼성디스플레이):</b> OLED 패널을 만드는 곳이다.
+    삼성전자가 100% 자회사로 보유한 SDC는 애플 아이폰에 납품하는 세계 최대 스마트폰 OLED 공급사다.
+    2025년 매출 29.8조, 영업이익 4.1조로 안정적인 실적을 보였다.
+    (2023년 5.6조 영업이익 대비로는 다소 낮아졌음을 주목하라.)
+    중국 BOE 등 OLED 경쟁사들의 기술 추격이 중장기 리스크다.
+  </p>
+  <p>
+    <b>Harman:</b> 2017년 삼성전자가 80억 달러에 인수한 전장·오디오 전문 기업이다.
+    JBL, 하만카돈, AKG 등 프리미엄 오디오 브랜드를 보유하고 있으며,
+    자동차용 디지털 콕핏 분야에서 시장점유율 16.5%(2025년 기준)로 업계 최상위권이다.
+    2025년 3분기, Harman은 B&W·Denon·Marantz 등 브랜드를 보유한
+    미국 Sound United를 인수하여 프리미엄 오디오 시장 리더십을 강화했다.
+    향후 SDV(소프트웨어 정의 자동차) 트렌드에서 Harman의 전장 역량이
+    삼성전자 전체 그룹 내에서 더욱 중요해질 전망이다.
+  </p>
+
+  <h4>VII. 재무제표 핵심 포인트 — 숫자로 읽는 건강 상태</h4>
+  <table class=\'ftable\'>
+    <thead><tr><th>지표</th><th>2023</th><th>2024</th><th>2025</th><th>해석</th></tr></thead>
+    <tbody>
+      <tr><td>연결 매출액</td><td>258.9조</td><td>302.0조</td><td>333.6조</td><td>3년 연속 성장</td></tr>
+      <tr><td>연결 영업이익</td><td>6.6조</td><td>32.7조</td><td>43.4조</td><td>DS 회복이 견인</td></tr>
+      <tr><td>영업이익률</td><td>2.5%</td><td>10.9%</td><td>13.0%</td><td>정상화 중</td></tr>
+      <tr><td>DS부문 OP</td><td>-14.9조</td><td>+15.1조</td><td>+24.9조</td><td>V자 반등</td></tr>
+      <tr><td>연구개발비</td><td>-</td><td>-</td><td>37.8조</td><td>매출의 11.3%</td></tr>
+    </tbody>
+  </table>
+  <p>
+    재무상태표에서 주목할 것은 DS부문의 총자산이다.
+    2025년 DS부문 총자산은 371.9조원으로, 전체 그룹 자산의 47.6%를 차지한다.
+    이는 삼성이 반도체에 얼마나 거대한 자산을 묶어놨는지를 보여준다.
+    메모리 업황이 꺾이면 이 자산들이 순식간에 부담이 된다는 것을 기억하라.
+  </p>
+  <p>
+    현금흐름 측면에서 삼성전자는 매우 탄탄하다.
+    대규모 설비투자(CAPEX)가 필요한 반도체 업종의 특성상,
+    영업현금흐름이 CAPEX를 충분히 커버하는지를 항상 확인해야 한다.
+    삼성전자는 이 측면에서 글로벌 최상위 수준의 재무 체력을 보유하고 있다.
+  </p>
+
+  <h4>VIII. 연구개발비 38조 — 무엇에 쓰는가</h4>
+  <p>
+    2025년 삼성전자의 연구개발비는 37조 7,548억원이다.
+    매출 333조 대비 11.3%다. 이 숫자가 얼마나 큰지 감이 안 온다면:
+    카카오 전체 연간 매출이 약 7조원이다. 삼성은 R&D 비용만으로 그것의 다섯 배 이상을 쓴다.
+  </p>
+  <p>
+    이 R&D는 크게 세 방향으로 흐른다.
+    ① HBM4 등 차세대 메모리 기술 개발 — 경쟁사를 따라잡는 데 사용.
+    ② 2nm·1.4nm 파운드리 공정 개발 — TSMC와의 격차를 좁히는 데 사용.
+    ③ Galaxy AI 등 소프트웨어·AI 경쟁력 강화.
+    2025년 한 해에만 국내 특허 10,639건, 미국 특허 10,347건을 등록했다.
+  </p>
+  <p>
+    R&D는 삼성의 가장 강력한 해자(壕)다.
+    이 규모의 투자를 지속할 수 있는 회사가 전 세계에 몇 개나 될까.
+    동시에 리스크이기도 하다. 투자한 기술이 시장에서 외면받으면,
+    이 막대한 비용이 그대로 손실이 된다.
+  </p>
+
+  <h4>IX. 5대 핵심 리스크</h4>
+  <ul>
+    <li>
+      <b>HBM 경쟁 열위:</b> SK하이닉스가 엔비디아 HBM 공급의 주력 파트너 위치를 점령한 상태다.
+      삼성이 HBM4로 반격하지 못하면, AI 반도체 붐의 최대 수혜를 경쟁사에 내주게 된다.
+      이것이 현재 삼성전자의 가장 즉각적이고 구체적인 리스크다.
+    </li>
+    <li>
+      <b>미국 관세 및 지정학 리스크:</b> 트럼프 행정부의 반도체 관세 정책이 변수다.
+      삼성전자는 미국 텍사스 오스틴에 파운드리 공장을 운영 중이며,
+      미국 정부의 반도체 정책 변화에 직접적인 영향을 받는다.
+      사업보고서도 환율변동위험 관리를 위해 미국·영국·싱가포르·중국·브라질·UAE에
+      지역금융센터를 운영한다고 명시했다.
+    </li>
+    <li>
+      <b>중국 경쟁사 추격:</b> NAND Flash 시장에서 YMTC 등 중국 기업들이 저가 공세를 강화하고 있다.
+      Mature(성숙) 공정 파운드리에서는 SMIC 등이 가격 경쟁을 벌이고 있다.
+      중국의 반도체 굴기는 삼성의 중저가 시장 마진을 장기적으로 압박한다.
+    </li>
+    <li>
+      <b>메모리 가격 사이클 리스크:</b> 2023년의 악몽을 기억하라.
+      AI 수요 호황으로 메모리 가격이 높게 유지되고 있지만,
+      공급과잉이 발생하면 순식간에 하락한다.
+      DS부문 이익의 변동성은 삼성전자 전체 실적의 변동성과 직결된다.
+    </li>
+    <li>
+      <b>파운드리 적자 지속 가능성:</b> 파운드리 사업은 아직 의미 있는 수익을 내지 못하고 있는 것으로 보인다.
+      대규모 CAPEX와 기술 투자가 계속되는 상황에서,
+      파운드리 수익화가 지연될수록 그룹 전체 재무에 부담이 된다.
+    </li>
+  </ul>
+
+  <h4>X. 2026년 무엇을 볼 것인가</h4>
+  <p>
+    사업보고서가 명시한 2026년 전망의 핵심을 그대로 인용하면:
+    "2026년에도 AI 수요 강세는 지속될 것으로 예상된다.
+    특히 서버 응용에서 고성능 HBM4 시장 본격화와 더불어,
+    서버향 DRAM의 고용량화가 가속화될 전망."
+  </p>
+  <p>
+    주니어 애널리스트라면 2026년에 이 세 가지를 반드시 모니터링하라.
+  </p>
+  <ul>
+    <li>
+      <b>HBM4 엔비디아 퀄 테스트 통과 여부</b> — 이게 확인되면 DS부문 이익이 레벨업된다.
+    </li>
+    <li>
+      <b>메모리 가격 동향 (DRAMeXchange 월간 가격 데이터)</b> — 분기 실적 예측의 핵심 선행지표다.
+    </li>
+    <li>
+      <b>파운드리 고객사 수주 현황</b> — 2nm 이하 공정에서 삼성 파운드리를 선택한 빅테크가 나오면 게임 체인저다.
+    </li>
+  </ul>
+
+  <div class=\'verdict\' style=\'margin-top:28px;\'>
+    <div class=\'vlbl\'>결론 및 총평</div>
+    <p>
+      "삼성전자는 반도체 사이클과 함께 움직이는 회사다.
+      2025년은 DS부문의 극적인 회복으로 좋은 해였다.
+      그런데 지금 진짜 질문은 이것이다 — HBM이라는 새로운 게임에서,
+      삼성은 빠른 추격자(Fast Follower)로 남을 것인가,
+      아니면 선두(Leader)를 되찾을 것인가.
+      그 답이 2026~2027년 주가 방향을 결정한다.
+      매수도 매도도 이 질문에 대한 자신의 답을 먼저 세워라."
+    </p>
+  </div>
+
+  <div class=\'note\' style=\'margin-top:22px;\'>
+    <b>주요 데이터 출처:</b> 삼성전자 제57기 사업보고서 (2026.03.10, 전자공시시스템 DART) |
+    DRAMeXchange, Techinsights, S&P Global 인용 포함 | 일부 수치는 사업보고서 기재 부문별 수치로,
+    연결 재무제표와 차이가 있을 수 있음
+  </div>
+
+  <div class=\'disclaimer\'>
+    ⚠️ 본 리포트는 투자 참고용 정보입니다. 투자 권유가 아니며, 모든 투자 결정은 본인의 판단과 책임하에 하시기 바랍니다.
+  </div>
+</div>
+`;
+function renderDeep(){
+  const c=state.current; if(!c) return;
+  const body=document.getElementById("deepBody");
+  const e=c.expert;
+  const ehead=e.fin[0], erows=e.fin.slice(1);
+  const DISC='<div class="disclaimer">⚠️ 본 리포트는 투자 참고용 정보입니다. 투자 권유가 아니며, 모든 투자 결정은 본인의 판단과 책임하에 하시기 바랍니다.</div>';
+  if(state.deepTab==="general"){
+    const g=c.general;
+    body.innerHTML=`<div class="report fade">
+      <div class="rkick">일반인용 리포트 · 핵심만 쉽게</div>
+      <h3>${c.name}, 한눈에 이해하기</h3>
+      <p class="lead">${g.lead}</p>
+      <h4>사업 구조 — 무엇으로 돈을 버나</h4>
+      ${g.structure.map(p=>`<p>${p}</p>`).join("")}
+      <h4>성장성 — 앞으로 어디로</h4>
+      ${g.growth.map(p=>`<p>${p}</p>`).join("")}
+      <h4>리스크 — 무엇을 조심해야 하나</h4>
+      <ul>${g.risk.map(r=>`<li>${r}</li>`).join("")}</ul>
+      <div class="verdict"><div class="vlbl">한 줄 결론</div><p>"${g.verdict}"</p></div>
+      <div class="fin-divider">
+        <h4>주요 재무 지표 (최근 3년)</h4>
+        <table class="ftable">
+          <thead><tr>${ehead.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+          <tbody>${erows.map(row=>`<tr>${row.map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody>
+        </table>
+        <h4>핵심 주석</h4>
+        <ul>${e.notes.map(n=>`<li>${n}</li>`).join("")}</ul>
+        <h4>감사인 의견</h4>
+        <div class="note">${e.audit}</div>
+      </div>
+      ${DISC}
+    </div>`;
+  } else {
+    if(c.code==="005930"){ body.innerHTML=SAMSUNG_REPORT; window.scrollTo({top:0,behavior:"smooth"}); return; }
+    body.innerHTML=`<div class="report fade">
+      <div class="rkick">전문가용 리포트 · 원문에 충실</div>
+      <h3>${c.name} · 재무 및 공시 분석</h3>
+      <p style="font-size:13px;color:var(--ink-soft);margin-bottom:18px;">실제 서비스에서는 DART 사업보고서 전문이 Claude AI에 의해 분석되어 20~30페이지 분량의 상세 리포트로 제공됩니다.</p>
+      <h4>주요 재무 지표</h4>
+      <table class="ftable">
+        <thead><tr>${ehead.map(h=>`<th>${h}</th>`).join("")}</tr></thead>
+        <tbody>${erows.map(row=>`<tr>${row.map(v=>`<td>${v}</td>`).join("")}</tr>`).join("")}</tbody>
+      </table>
+      <h4>사업보고서 주석 요약</h4>
+      <ul>${e.notes.map(n=>`<li>${n}</li>`).join("")}</ul>
+      <h4>감사인 의견</h4>
+      <div class="note">${e.audit}</div>
+      ${DISC}
+    </div>`;
+  }
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function updateFreePill(){
+  const left = getFreeLeft();
+  const user = getUser();
+  const el   = document.getElementById("freePill");
+  if(!el) return;
+  if(left > 0) {
+    el.textContent = `오늘 무료 자세히보기 ${left}회`;
+  } else if(!user) {
+    el.textContent = '가입하면 1회 추가';
+    el.style.cursor = 'pointer';
+    el.onclick = openLogin;
+  } else {
+    el.textContent = '무료 횟수 소진 · 구독 추천';
+    el.onclick = openPay;
+  }
+}
+
+/* =========================================================
+   결제 모달 (데모)
+   ========================================================= */
+/* 구독하기 클릭 → 비로그인이면 로그인 모달 먼저, 로그인 상태면 바로 결제 */
+function openSubscribe() {
+  if (!getUser()) {
+    openLogin(() => openPay());  // 로그인 완료 후 결제 모달 열기
+  } else {
+    openPay();
+  }
+}
+function openPay(){ document.getElementById("overlay").style.display="flex"; }
+function closePay(){ document.getElementById("overlay").style.display="none"; }
+function selectPlan(el,plan){
+  state.selectedPlan=plan;
+  document.querySelectorAll(".plan").forEach(p=>p.style.borderColor="");
+  el.style.borderColor="var(--up)";
+}
+function fakePay(){
+  closePay();
+  // 데모: 구독 완료 시 오늘 열람 기록 초기화 (실제 서비스에서는 서버에서 구독 상태 관리)
+  try {
+    const d = getFreeData();
+    d.subscribed = true;
+    d.viewed = [];
+    saveFreeData(d);
+  } catch {}
+  updateFreePill();
+  toast("구독 완료! 이제 무제한으로 볼 수 있어요 (데모)");
+  if(state.current){ state.deepTab="general"; syncDeepTabs(); renderDeep(); show("deep"); }
+}
+
+function toast(msg){
+  const t=document.getElementById("toast"); t.textContent=msg; t.classList.add("show");
+  setTimeout(()=>t.classList.remove("show"),2600);
+}
+document.getElementById("overlay").addEventListener("click",e=>{ if(e.target.id==="overlay") closePay(); });
+
+/* 다크모드 */
+
+/* =========================================================
+   소셜 로그인 / 회원가입 모달
+   =========================================================
+   ⚠️  실제 OAuth 연동을 위해서는 Firebase Auth SDK 설정 필요
+       (아래 TODO 주석 참고)
+   현재는 localStorage 기반 데모 모드로 동작합니다.
+   ========================================================= */
+
+let _loginPendingAction = null;  // 로그인 후 실행할 콜백
+
+function openLogin(callback) {
+  _loginPendingAction = callback || null;
+  // 로그인 이미 되어 있으면 바로 paywall
+  if (getUser()) { openPay(); return; }
+  document.getElementById("loginStep1").style.display = "block";
+  document.getElementById("loginStep2").style.display = "none";
+  document.getElementById("loginStep3").style.display = "none";
+  document.getElementById("loginOverlay").style.display = "flex";
+}
+
+function closeLogin() {
+  document.getElementById("loginOverlay").style.display = "none";
+}
+
+function showTerms() {
+  document.getElementById("termsOverlay").style.display = "flex";
+}
+function closeTerms() {
+  document.getElementById("termsOverlay").style.display = "none";
+}
+
+/* ── 소셜 로그인 클릭 ──
+   TODO: 실제 OAuth 연동 시 아래 각 케이스에서 SDK 호출로 교체하세요.
+   권장: Firebase Auth (https://firebase.google.com/docs/auth)
+   - Google: firebase.auth().signInWithPopup(new firebase.auth.GoogleAuthProvider())
+   - Apple : firebase.auth().signInWithPopup(new firebase.auth.OAuthProvider('apple.com'))
+   - Kakao : Kakao SDK → firebase.auth().signInWithCustomToken(kakaoCustomToken)
+   - Naver : Naver SDK → firebase.auth().signInWithCustomToken(naverCustomToken)
+*/
+function socialLogin(provider) {
+  // 닉네임 단계로 이동 (데모: 즉시 진행)
+  const names = { google:'구글', kakao:'카카오', naver:'네이버', apple:'애플' };
+  document.getElementById("loginStep1").style.display = "none";
+  document.getElementById("loginStep2").style.display = "block";
+  // 나중에 OAuth 연동 시: provider 정보를 저장해 두었다가 completeRegister에서 사용
+  window._pendingProvider = provider;
+}
+
+function completeRegister() {
+  const nickname = (document.getElementById("nicknameInput").value || '').trim();
+  if (!nickname || nickname.length < 2) {
+    toast("닉네임은 2자 이상 입력해 주세요.");
+    return;
+  }
+
+  // 사용자 정보 저장
+  const user = {
+    nickname,
+    provider : window._pendingProvider || 'unknown',
+    joinedAt : Date.now(),
+  };
+  saveUser(user);
+
+  // 완료 화면
+  document.getElementById("loginStep2").style.display = "none";
+  document.getElementById("loginStep3").style.display = "block";
+  updateFreePill();
+}
+
+function closeLoginAndContinue() {
+  closeLogin();
+  updateFreePill();
+  // 로그인 후 대기 중이던 액션 실행
+  if (_loginPendingAction) {
+    _loginPendingAction();
+    _loginPendingAction = null;
+  }
+}
+
+// overlay 클릭 시 닫기
+document.getElementById("loginOverlay").addEventListener("click", e => {
+  if (e.target.id === "loginOverlay") closeLogin();
+});
+document.getElementById("termsOverlay").addEventListener("click", e => {
+  if (e.target.id === "termsOverlay") closeTerms();
+});
+
+function initDark(){
+  let d=true; // 다크모드 기본값
+  try{ const s=localStorage.getItem('dark'); if(s!==null) d=(s==='1'); }catch(e){}
+  applyDark(d);
+}
+function applyDark(on){
+  document.documentElement.classList.toggle('dark',on);
+  const btn=document.getElementById('darkBtn'); if(btn) btn.textContent=on?'☀️':'🌙';
+  try{localStorage.setItem('dark',on?'1':'0');}catch(e){}
+}
+function toggleDark(){ applyDark(!document.documentElement.classList.contains('dark')); }
+initDark();
+
+
+/* =========================================================
+   DART 실시간 검색 + Gemini AI 요약
+   ========================================================= */
+
+let dartState = {
+  currentCompany  : null,   // 현재 선택된 기업 정보
+  cachedDisclosures: null,  // 검색 결과에서 캐싱된 공시 목록
+};
+
+/* ── 마켓 코드 한글 변환 ── */
+const MKT = { Y:'KOSPI', K:'KOSDAQ', N:'코넥스', E:'기타' };
+
+/* ── 날짜 포맷: "20240315" → "2024.03.15" ── */
+function fmtDate(s) {
+  if (!s || s.length < 8) return s || '';
+  return s.slice(0,4) + '.' + s.slice(4,6) + '.' + s.slice(6,8);
+}
+
+/* ── 오류 박스 ── */
+function errBox(msg) {
+  return `<div style="color:var(--up);background:var(--paper-2);border-radius:12px;padding:20px;">${msg}</div>`;
+}
+
+/* ─────────────────────────────────────────────
+   1. 회사명 검색 → 결과 화면
+   ─────────────────────────────────────────────*/
+/* ─────────────────────────────────────────────
+   자동완성 — 인기 상장기업 50개 + 입력 필터
+   ─────────────────────────────────────────────*/
+const POPULAR_CORPS = [
+  // ── 삼성 그룹 ──
+  {corp_name:'삼성전자',          stock_code:'005930'},
+  {corp_name:'삼성SDI',           stock_code:'006400'},
+  {corp_name:'삼성전기',          stock_code:'009150'},
+  {corp_name:'삼성물산',          stock_code:'028260'},
+  {corp_name:'삼성중공업',        stock_code:'010140'},
+  {corp_name:'삼성카드',          stock_code:'029780'},
+  {corp_name:'삼성생명',          stock_code:'032830'},
+  {corp_name:'삼성화재',          stock_code:'000810'},
+  {corp_name:'삼성바이오로직스',  stock_code:'207940'},
+  {corp_name:'삼성엔지니어링',    stock_code:'028050'},
+  {corp_name:'삼성증권',          stock_code:'016360'},
+  {corp_name:'삼성SDS',           stock_code:'018260'},
+  // ── 현대 그룹 ──
+  {corp_name:'현대차',            stock_code:'005380'},
+  {corp_name:'현대모비스',        stock_code:'012330'},
+  {corp_name:'현대건설',          stock_code:'000720'},
+  {corp_name:'현대제철',          stock_code:'004020'},
+  {corp_name:'현대로템',          stock_code:'064350'},
+  {corp_name:'현대위아',          stock_code:'011210'},
+  {corp_name:'현대글로비스',      stock_code:'086280'},
+  {corp_name:'현대미포조선',      stock_code:'010620'},
+  {corp_name:'현대엘리베이터',    stock_code:'017800'},
+  {corp_name:'현대오토에버',      stock_code:'307950'},
+  {corp_name:'현대코퍼레이션',    stock_code:'011760'},
+  {corp_name:'HD현대',            stock_code:'267250'},
+  {corp_name:'HD현대일렉트릭',    stock_code:'267260'},
+  {corp_name:'HD한국조선해양',    stock_code:'009540'},
+  {corp_name:'현대백화점',        stock_code:'069960'},
+  {corp_name:'현대홈쇼핑',        stock_code:'057050'},
+  {corp_name:'기아',              stock_code:'000270'},
+  // ── SK 그룹 ──
+  {corp_name:'SK하이닉스',        stock_code:'000660'},
+  {corp_name:'SK텔레콤',          stock_code:'017670'},
+  {corp_name:'SK이노베이션',      stock_code:'096770'},
+  {corp_name:'SK',                stock_code:'034730'},
+  {corp_name:'SKC',               stock_code:'011790'},
+  {corp_name:'SK가스',            stock_code:'018670'},
+  {corp_name:'SK바이오팜',        stock_code:'326030'},
+  {corp_name:'SK바이오사이언스',  stock_code:'302440'},
+  {corp_name:'SK스퀘어',          stock_code:'402340'},
+  {corp_name:'SK네트웍스',        stock_code:'001740'},
+  {corp_name:'SK렌터카',          stock_code:'068400'},
+  // ── LG 그룹 ──
+  {corp_name:'LG전자',            stock_code:'066570'},
+  {corp_name:'LG화학',            stock_code:'051910'},
+  {corp_name:'LG에너지솔루션',    stock_code:'373220'},
+  {corp_name:'LG디스플레이',      stock_code:'034220'},
+  {corp_name:'LG이노텍',          stock_code:'011070'},
+  {corp_name:'LG유플러스',        stock_code:'032640'},
+  {corp_name:'LG생활건강',        stock_code:'051900'},
+  {corp_name:'LS일렉트릭',        stock_code:'010120'},
+  {corp_name:'LS',                stock_code:'006260'},
+  // ── 카카오 ──
+  {corp_name:'카카오',            stock_code:'035720'},
+  {corp_name:'카카오뱅크',        stock_code:'323410'},
+  {corp_name:'카카오페이',        stock_code:'377300'},
+  {corp_name:'카카오게임즈',      stock_code:'293490'},
+  // ── 네이버·IT ──
+  {corp_name:'네이버',            stock_code:'035420'},
+  {corp_name:'KT',                stock_code:'030200'},
+  {corp_name:'KT&G',              stock_code:'033780'},
+  {corp_name:'크래프톤',          stock_code:'259960'},
+  {corp_name:'엔씨소프트',        stock_code:'036570'},
+  {corp_name:'넷마블',            stock_code:'251270'},
+  {corp_name:'펄어비스',          stock_code:'263750'},
+  {corp_name:'더블유게임즈',      stock_code:'192080'},
+  {corp_name:'컴투스',            stock_code:'078340'},
+  // ── 금융 ──
+  {corp_name:'KB금융',            stock_code:'105560'},
+  {corp_name:'신한지주',          stock_code:'055550'},
+  {corp_name:'하나금융지주',      stock_code:'086790'},
+  {corp_name:'우리금융지주',      stock_code:'316140'},
+  {corp_name:'NH투자증권',        stock_code:'005940'},
+  {corp_name:'메리츠금융지주',    stock_code:'138040'},
+  {corp_name:'미래에셋증권',      stock_code:'006800'},
+  {corp_name:'키움증권',          stock_code:'039490'},
+  {corp_name:'DB손해보험',        stock_code:'005830'},
+  {corp_name:'한화생명',          stock_code:'088350'},
+  {corp_name:'교보증권',          stock_code:'030610'},
+  {corp_name:'대신증권',          stock_code:'003540'},
+  {corp_name:'신영증권',          stock_code:'001720'},
+  {corp_name:'한국금융지주',      stock_code:'071050'},
+  {corp_name:'한화손해보험',      stock_code:'000370'},
+  // ── POSCO·철강 ──
+  {corp_name:'POSCO홀딩스',       stock_code:'005490'},
+  {corp_name:'포스코퓨처엠',      stock_code:'003670'},
+  {corp_name:'포스코인터내셔널',  stock_code:'047050'},
+  {corp_name:'고려아연',          stock_code:'010130'},
+  {corp_name:'현대제철',          stock_code:'004020'},
+  {corp_name:'동국제강',          stock_code:'001230'},
+  {corp_name:'풍산',              stock_code:'103140'},
+  // ── 배터리·소재 ──
+  {corp_name:'에코프로비엠',      stock_code:'247540'},
+  {corp_name:'에코프로',          stock_code:'086520'},
+  {corp_name:'엘앤에프',          stock_code:'066970'},
+  {corp_name:'코스모신소재',      stock_code:'005070'},
+  // ── 바이오·제약 ──
+  {corp_name:'셀트리온',          stock_code:'068270'},
+  {corp_name:'셀트리온헬스케어',  stock_code:'091990'},
+  {corp_name:'셀트리온제약',      stock_code:'068760'},
+  {corp_name:'한미약품',          stock_code:'128940'},
+  {corp_name:'유한양행',          stock_code:'000100'},
+  {corp_name:'종근당',            stock_code:'185750'},
+  {corp_name:'대웅제약',          stock_code:'069620'},
+  {corp_name:'동아에스티',        stock_code:'170900'},
+  {corp_name:'녹십자',            stock_code:'006280'},
+  {corp_name:'보령',              stock_code:'003850'},
+  {corp_name:'알테오젠',          stock_code:'196170'},
+  {corp_name:'레고켐바이오',      stock_code:'141080'},
+  {corp_name:'파마리서치',        stock_code:'214450'},
+  {corp_name:'휴젤',              stock_code:'145020'},
+  {corp_name:'클래시스',          stock_code:'214150'},
+  {corp_name:'인터로조',          stock_code:'119610'},
+  {corp_name:'오스템임플란트',    stock_code:'048260'},
+  {corp_name:'덴티움',            stock_code:'145720'},
+  {corp_name:'리가켐바이오',      stock_code:'141080'},
+  {corp_name:'HLB',               stock_code:'028300'},
+  {corp_name:'메디톡스',          stock_code:'086900'},
+  // ── 에너지·중공업 ──
+  {corp_name:'한국전력',          stock_code:'015760'},
+  {corp_name:'한국가스공사',      stock_code:'036460'},
+  {corp_name:'두산에너빌리티',    stock_code:'034020'},
+  {corp_name:'두산밥캣',          stock_code:'241560'},
+  {corp_name:'두산퓨얼셀',        stock_code:'336260'},
+  {corp_name:'한화에어로스페이스',stock_code:'012450'},
+  {corp_name:'한화오션',          stock_code:'042660'},
+  {corp_name:'한화솔루션',        stock_code:'009830'},
+  {corp_name:'한화',              stock_code:'000880'},
+  {corp_name:'HD현대마린솔루션',  stock_code:'443060'},
+  // ── 반도체·전자부품 ──
+  {corp_name:'DB하이텍',          stock_code:'000990'},
+  {corp_name:'리노공업',          stock_code:'058630'},
+  {corp_name:'솔브레인',          stock_code:'357780'},
+  {corp_name:'원익IPS',           stock_code:'240810'},
+  {corp_name:'이오테크닉스',      stock_code:'039030'},
+  {corp_name:'하이비젼시스템',    stock_code:'126700'},
+  // ── 건설·부동산 ──
+  {corp_name:'GS건설',            stock_code:'006360'},
+  {corp_name:'대우건설',          stock_code:'047040'},
+  {corp_name:'DL이앤씨',          stock_code:'375500'},
+  {corp_name:'HDC현대산업개발',   stock_code:'294870'},
+  {corp_name:'HJ중공업',          stock_code:'097230'},
+  // ── 유통·소비재 ──
+  {corp_name:'신세계',            stock_code:'004170'},
+  {corp_name:'이마트',            stock_code:'139480'},
+  {corp_name:'롯데쇼핑',          stock_code:'023530'},
+  {corp_name:'GS리테일',          stock_code:'007070'},
+  {corp_name:'BGF리테일',         stock_code:'282330'},
+  {corp_name:'CJ제일제당',        stock_code:'097950'},
+  {corp_name:'CJ ENM',            stock_code:'035760'},
+  {corp_name:'CJ대한통운',        stock_code:'000120'},
+  {corp_name:'아모레퍼시픽',      stock_code:'090430'},
+  {corp_name:'오리온',            stock_code:'271560'},
+  {corp_name:'농심',              stock_code:'004370'},
+  {corp_name:'빙그레',            stock_code:'005180'},
+  {corp_name:'하이트진로',        stock_code:'000080'},
+  {corp_name:'오뚜기',            stock_code:'007310'},
+  {corp_name:'롯데웰푸드',        stock_code:'280360'},
+  // ── 항공·운송·물류 ──
+  {corp_name:'대한항공',          stock_code:'003490'},
+  {corp_name:'아시아나항공',      stock_code:'020560'},
+  {corp_name:'HMM',               stock_code:'011200'},
+  {corp_name:'팬오션',            stock_code:'028670'},
+  {corp_name:'한진칼',            stock_code:'180640'},
+  {corp_name:'한진',              stock_code:'002320'},
+  // ── 자동차부품·타이어 ──
+  {corp_name:'만도',              stock_code:'204320'},
+  {corp_name:'한온시스템',        stock_code:'018880'},
+  {corp_name:'한국타이어앤테크놀로지', stock_code:'161390'},
+  {corp_name:'넥센타이어',        stock_code:'002350'},
+  {corp_name:'경동나비엔',        stock_code:'009450'},
+  // ── 효성 그룹 ──
+  {corp_name:'효성',              stock_code:'004800'},
+  {corp_name:'효성첨단소재',      stock_code:'298050'},
+  {corp_name:'효성중공업',        stock_code:'298040'},
+  {corp_name:'효성티앤씨',        stock_code:'298020'},
+];
+
+let acSelected = -1;
+
+function showAutocomplete(val) {
+  const list = document.getElementById('autocomplete-list');
+  if (!list) return;
+  val = (val || '').trim();
+  if (!val) { list.style.display='none'; return; }
+
+  const matches = POPULAR_CORPS.filter(c => c.corp_name.includes(val)).slice(0, 8);
+  if (matches.length === 0) { list.style.display='none'; return; }
+
+  list.innerHTML = matches.map((c, i) =>
+    `<div class="ac-item" data-i="${i}" data-code="${c.corp_code||''}" onclick="pickAutocomplete('${c.corp_name}','${c.corp_code||''}','${c.stock_code||''}')"
+      style="display:flex;align-items:center;justify-content:space-between;padding:14px 20px;cursor:pointer;border-bottom:1px solid var(--line,#E0E0E0);gap:12px;">
+      <span style="font-family:var(--sans);font-size:16px;font-weight:700;color:var(--ink,#111);">${c.corp_name}</span>
+      <span style="font-family:'Inter',monospace;font-size:13px;font-weight:500;color:var(--ink-soft,#666);letter-spacing:.5px;">${c.stock_code}</span>
+    </div>`
+  ).join('') +
+  `<div onclick="searchDart(document.getElementById('search').value.trim(),'')"
+    style="display:flex;align-items:center;justify-content:center;gap:8px;padding:14px 20px;cursor:pointer;font-family:var(--sans);font-size:15px;font-weight:600;color:var(--up,#E02020);">
+    <span style="font-size:16px;">🔍</span> "<span style="text-decoration:underline;">${val}</span>" 전체 검색
+  </div>`;
+  list.style.display = 'block';
+  acSelected = -1;
+}
+
+function pickAutocomplete(name, corpCode, stockCode) {
+  document.getElementById('search').value = name;
+  document.getElementById('autocomplete-list').style.display = 'none';
+  // corp_code 있든 없든 loadLatestReport가 알아서 처리
+  loadLatestReport(corpCode || '', name, stockCode || '', '');
+}
+
+function handleSearchKey(e) {
+  const list = document.getElementById('autocomplete-list');
+  const items = list ? list.querySelectorAll('.ac-item') : [];
+  if (e.key === 'ArrowDown') {
+    acSelected = Math.min(acSelected + 1, items.length - 1);
+  } else if (e.key === 'ArrowUp') {
+    acSelected = Math.max(acSelected - 1, -1);
+  } else if (e.key === 'Enter') {
+    if (acSelected >= 0 && items[acSelected]) {
+      items[acSelected].click();
+    } else {
+      const q = document.getElementById('search').value.trim();
+      if (q) searchDart(q, '');
+    }
+    if (list) list.style.display = 'none';
+    return;
+  } else if (e.key === 'Escape') {
+    if (list) list.style.display = 'none';
+    return;
+  }
+  items.forEach((el, i) => {
+    el.style.background = i === acSelected ? 'var(--bg-secondary,#f5f5f5)' : '';
+  });
+}
+
+// 자동완성 외부 클릭 시 닫기
+document.addEventListener('click', e => {
+  if (!e.target.closest('.searchbar')) {
+    const list = document.getElementById('autocomplete-list');
+    if (list) list.style.display = 'none';
+  }
+});
+
+async function searchDart(query, corpCode) {
+  if (!query || !query.trim()) return;
+  query = query.trim();
+  corpCode = (corpCode || '').trim();
+  
+  // POPULAR_CORPS에서 corp_code 찾기 (없으면 빈 문자열)
+  if (!corpCode) {
+    const found = POPULAR_CORPS.find(c => c.corp_name === query);
+    if (found && found.corp_code) corpCode = found.corp_code;
+  }
+
+  // corpCode 있으면 바로 AI 요약으로 (검색 결과 화면 생략)
+  if (corpCode) {
+    loadLatestReport(corpCode, query, '', '');
+    return;
+  }
+
+  show("dart-results");
+  document.getElementById("dart-results-title").textContent = '"' + query + '" 검색 결과';
+
+  // 서버 없이 클라이언트에서 직접 검색 (빠르고 정확)
+  const exact   = POPULAR_CORPS.filter(c => c.corp_name === query);
+  const starts  = POPULAR_CORPS.filter(c => c.corp_name !== query && c.corp_name.startsWith(query));
+  const partial = POPULAR_CORPS.filter(c => !c.corp_name.startsWith(query) && c.corp_name.includes(query));
+  const list    = [...exact, ...starts, ...partial];
+
+  if (list.length === 0) {
+    document.getElementById("dart-results-list").innerHTML =
+      '<div style="grid-column:1/-1;color:var(--ink-soft);padding:24px 0;">' +
+      '검색 결과가 없어요. 위 자동완성 목록에서 선택하거나 정확한 회사명을 입력해 보세요.</div>';
+    return;
+  }
+
+  document.getElementById("dart-results-list").innerHTML = list.map((c, i) => {
+    return `<div class="card fade" style="animation-delay:${i*0.05}s"
+                 onclick="loadLatestReport('','${(c.corp_name||'').replace(/['"]/g,'')}','${c.stock_code||''}','')">
+      <div class="cname">${c.corp_name}</div>
+      <div class="ccode">${c.stock_code || '비상장'}</div>
+      <div class="oneliner" style="margin-top:12px;">클릭하면 AI 요약 바로 보기 ✨</div>
+    </div>`;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────
+   2-A. 기업 카드 클릭 → 최근 주요보고서 자동 선택 → 바로 AI 요약
+        (사업보고서 > 반기보고서 > 분기보고서 > 최신 공시 순)
+   ─────────────────────────────────────────────*/
+async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
+  // 바로 요약 화면으로 전환 후 로딩 상태 표시
+  show("disclosure-detail");
+  document.getElementById("dd-title").textContent = corpName + ' — 공시 불러오는 중...';
+  document.getElementById("dd-meta").textContent  = '';
+  document.getElementById("dd-loading").style.display = "block";
+  document.getElementById("dd-summary").style.display  = "none";
+
+  try {
+    // ① corp_code 없으면 /api/companies로 정확하게 찾기
+    if (!corpCode) {
+      const searchRes  = await fetch('/api/companies?name=' + encodeURIComponent(corpName));
+      const searchList = await searchRes.json();
+      if (Array.isArray(searchList) && searchList.length > 0) {
+        const match = searchList.find(c => c.corp_name === corpName) || searchList[0];
+        corpCode  = match.corp_code;
+        stockCode = stockCode || match.stock_code;
+      }
+    }
+
+    if (!corpCode) {
+      document.getElementById("dd-loading").style.display = "none";
+      document.getElementById("dd-summary").style.display  = "block";
+      document.getElementById("dd-summary").innerHTML = errBox('기업 코드를 찾지 못했어요. 회사 이름을 정확히 입력해 주세요.');
+      return;
+    }
+
+    dartState.currentCompany = { corpCode, corpName, stockCode, corpCls };
+    document.getElementById("dd-title").textContent = corpName + ' — 최근 보고서 불러오는 중...';
+
+    // ② corp_code로 공시 목록 조회
+    const res  = await fetch('/api/disclosures?corpCode=' + encodeURIComponent(corpCode));
+    const data = await res.json();
+
+    if (data.error || data.status !== '000' || !data.list || data.list.length === 0) {
+      document.getElementById("dd-loading").style.display = "none";
+      document.getElementById("dd-summary").style.display  = "block";
+      document.getElementById("dd-summary").innerHTML = errBox('공시 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.');
+      return;
+    }
+
+    // ③ 우선순위: 사업보고서 > 반기보고서 > 분기보고서
+    const priority = ['사업보고서', '반기보고서', '분기보고서'];
+    let target = null;
+    for (const keyword of priority) {
+      target = data.list.find(d => (d.report_nm || '').includes(keyword));
+      if (target) break;
+    }
+
+    // 주요 보고서 없으면 — 1년 전체 재조회 후 재탐색
+    if (!target) {
+      const res2  = await fetch('/api/disclosures?corpCode=' + encodeURIComponent(corpCode) + '&months=12');
+      const data2 = await res2.json();
+      if (data2.status === '000' && data2.list) {
+        for (const keyword of priority) {
+          target = data2.list.find(d => (d.report_nm || '').includes(keyword));
+          if (target) break;
+        }
+      }
+    }
+
+    // 1년치에도 주요 보고서 없으면 안내 메시지
+    if (!target) {
+      document.getElementById("dd-loading").style.display = "none";
+      document.getElementById("dd-summary").style.display  = "block";
+      document.getElementById("dd-summary").innerHTML = errBox(
+        '📋 최근 1년간 사업보고서 · 반기보고서 · 분기보고서가 없어요.<br>' +
+        '<small>비상장사이거나 보고서 제출 시기가 아닐 수 있어요.<br>' +
+        '공시 목록에서 직접 선택하려면 <a href="#" onclick="loadDisclosures('' + corpCode + '','' + (corpName||'').replace(/'/g,"\'") + '','' + (stockCode||'') + '','' + (corpCls||'') + '');return false;">여기를 클릭</a>하세요.</small>'
+      );
+      return;
+    }
+
+    // ④ 바로 AI 요약
+    loadSummary(target.rcept_no, target.report_nm, target.rcept_dt, target.flr_nm);
+
+  } catch(err) {
+    document.getElementById("dd-loading").style.display = "none";
+    document.getElementById("dd-summary").style.display  = "block";
+    document.getElementById("dd-summary").innerHTML = errBox('오류: ' + err.message);
+  }
+}
+
+/* ─────────────────────────────────────────────
+   2. 기업 선택 → 공시 목록 화면
+   ─────────────────────────────────────────────*/
+function loadDisclosures(corpCode, corpName, stockCode, corpCls) {
+  dartState.currentCompany = { corpCode, corpName, stockCode, corpCls };
+
+  show("disclosure-list");
+  document.getElementById("dl-name").textContent    = corpName;
+  document.getElementById("dl-sector").textContent  = MKT[corpCls] || '기업';
+  document.getElementById("dl-code").textContent    = stockCode ? stockCode : '비상장';
+  document.getElementById("dl-list").innerHTML      = '<div style="color:var(--ink-soft);padding:20px 0;">📋 공시 목록 불러오는 중...</div>';
+
+  // 검색 결과에 이미 이 회사 공시가 있으면 재사용
+  const cached = dartState.cachedDisclosures
+    ? dartState.cachedDisclosures.filter(d => d.corp_code === corpCode)
+    : null;
+
+  if (cached && cached.length > 0) {
+    renderDisclosureList(cached);
+  } else {
+    fetchDisclosures(corpCode);
+  }
+}
+
+async function fetchDisclosures(corpCode) {
+  try {
+    const res  = await fetch('/api/disclosures?corpCode=' + corpCode);
+    const data = await res.json();
+    if (data.error || data.status !== '000' || !data.list) {
+      document.getElementById("dl-list").innerHTML = errBox('공시 목록을 불러오지 못했어요.');
+      return;
+    }
+    renderDisclosureList(data.list);
+  } catch(err) {
+    document.getElementById("dl-list").innerHTML = errBox(err.message);
+  }
+}
+
+function renderDisclosureList(list) {
+  if (!list || list.length === 0) {
+    document.getElementById("dl-list").innerHTML =
+      '<div style="color:var(--ink-soft);padding:20px 0;">최근 1년간 공시가 없어요.</div>';
+    return;
+  }
+  document.getElementById("dl-list").innerHTML = list.map(d => {
+    const safeTitle = (d.report_nm || '').replace(/"/g, '&quot;');
+    const safeFlr   = (d.flr_nm   || '').replace(/"/g, '&quot;');
+    return `<div class="disclosure-card"
+                 onclick='loadSummary("${d.rcept_no}","${safeTitle}","${d.rcept_dt||''}","${safeFlr}")'>
+      <div class="d-title">${d.report_nm}</div>
+      <div class="d-meta">${fmtDate(d.rcept_dt)} &nbsp;·&nbsp; 제출인: ${d.flr_nm}</div>
+      <div class="d-cta">✨ AI 요약 보기 →</div>
+    </div>`;
+  }).join('');
+}
+
+/* ─────────────────────────────────────────────
+   3. 공시 클릭 → AI 요약 화면
+   ─────────────────────────────────────────────*/
+/* 현재 요약 상태 */
+let _summaryMode   = 'general';
+let _currentRcptNo = null;
+let _currentTitle  = null;
+
+async function loadSummary(rcptNo, title, date, submitter) {
+  /* ── 무료 이용권 체크 ── */
+  const alreadySeen = hasViewed(rcptNo);
+  if (!alreadySeen && getFreeLeft() <= 0) {
+    if (!getUser()) { openLogin(); } else { openPay(); }
+    return;
+  }
+
+  _currentRcptNo = rcptNo;
+  _currentTitle  = title;
+  _summaryMode   = 'general';
+
+  show("disclosure-detail");
+  const dt = date || '';
+  document.getElementById("dd-title").textContent = title;
+  document.getElementById("dd-meta").textContent  =
+    (dt ? dt.slice(0,4)+'.'+dt.slice(4,6)+'.'+dt.slice(6,8)+' 접수' : '') +
+    (submitter ? ' · 제출인: ' + submitter : '');
+
+  ensureSummaryTabs(rcptNo);
+
+  /* ── 24시간 캐시 확인 ── */
+  const cached = getCached(rcptNo, 'general');
+  if (cached) {
+    console.log('[loadSummary] 캐시 로드');
+    renderGeneralReport(cached, rcptNo, title);
+    if (!alreadySeen) markViewed(rcptNo);
+    return;
+  }
+
+  document.getElementById("dd-loading").style.display = "block";
+  document.getElementById("dd-summary").style.display  = "none";
+
+  try {
+    const corpName = dartState.currentCompany?.corpName || '';
+    const res  = await fetch(`/api/summarize?rcptNo=${rcptNo}&mode=general&corpName=${encodeURIComponent(corpName)}`);
+    const data = await res.json();
+
+    if (data.error) {
+      const e = new Error(data.error);
+      e.detail = data.detail || '';
+      throw e;
+    }
+
+    cacheReport(rcptNo, 'general', data.data);
+    renderGeneralReport(data.data, rcptNo, title);
+    if (!alreadySeen) markViewed(rcptNo);
+
+  } catch(err) {
+    document.getElementById("dd-loading").style.display = "none";
+    document.getElementById("dd-summary").style.display  = "block";
+    // err.message = data.error, err.detail = data.detail (실제 원인)
+    const detail = err.detail ? '<br><small style="color:#999;">상세: ' + err.detail + '</small>' : '';
+    document.getElementById("dd-summary").innerHTML =
+      errBox('😢 요약 실패: ' + err.message + detail + '<br><small>문제가 계속되면 /api/status 를 확인해 주세요.</small>');
+  }
+}
+
+/* ── 일반인용 JSON → HTML 렌더링 ── */
+function renderGeneralReport(rawJson, rcptNo, title) {
+  document.getElementById("dd-loading").style.display = "none";
+  document.getElementById("dd-summary").style.display  = "block";
+
+  let g;
+  try {
+    const cleaned = (rawJson||'').replace(/^```json\s*/i,'').replace(/\s*```$/,'').trim();
+    g = JSON.parse(cleaned);
+  } catch {
+    document.getElementById("dd-summary").innerHTML = `
+      <div class="report fade">
+        <div class="rkick">AI 요약 · 일반인용</div>
+        <h3>${escHtml(title)}</h3>
+        <div class="ai-body" style="margin-top:20px;">${markdownToHtml(rawJson)}</div>
+        ${disclaimerHtml(rcptNo)}
+      </div>`;
+    return;
+  }
+
+  let finHtml = '';
+  if (g.fin && g.fin.length > 1) {
+    const head = g.fin[0], rows = g.fin.slice(1);
+    finHtml = `<h4>주요 재무 지표</h4>
+      <table class="ftable">
+        <thead><tr>${head.map(h=>`<th>${escHtml(String(h))}</th>`).join('')}</tr></thead>
+        <tbody>${rows.map(r=>`<tr>${r.map(v=>`<td>${escHtml(String(v||''))}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table>`;
+  }
+
+  document.getElementById("dd-summary").innerHTML = `
+    <div class="report fade">
+      <div class="rkick">AI 요약 · 일반인용 · Gemini 분석 · DART 공시 기반</div>
+      <h3>${escHtml(title)}</h3>
+      <p class="lead">${escHtml(g.lead||'')}</p>
+      <h4>사업 구조 — 무엇으로 돈을 버나</h4>
+      ${(g.structure||[]).map(p=>`<p>${escHtml(p)}</p>`).join('')}
+      <h4>성장성 — 앞으로 어디로</h4>
+      ${(g.growth||[]).map(p=>`<p>${escHtml(p)}</p>`).join('')}
+      <h4>리스크 — 무엇을 조심해야 하나</h4>
+      <ul>${(g.risk||[]).map(r=>`<li>${escHtml(r)}</li>`).join('')}</ul>
+      <div class="verdict"><div class="vlbl">한 줄 결론</div><p>"${escHtml(g.verdict||'')}"</p></div>
+      <div class="fin-divider">
+        ${finHtml}
+        ${g.notes&&g.notes.length?`<h4>핵심 주석</h4><ul>${g.notes.map(n=>`<li>${escHtml(n)}</li>`).join('')}</ul>`:''}
+        ${g.audit?`<h4>감사인 의견</h4><div class="note">${escHtml(g.audit)}</div>`:''}
+      </div>
+      ${disclaimerHtml(rcptNo)}
+    </div>`;
+}
+
+/* ── 전문가용 HTML 로드 (탭 전환) ── */
+async function loadExpertSummary(rcptNo, title) {
+  document.getElementById("dd-loading").style.display = "block";
+  document.getElementById("dd-summary").style.display  = "none";
+
+  const cached = getCached(rcptNo, 'expert');
+  if (cached) {
+    document.getElementById("dd-loading").style.display = "none";
+    document.getElementById("dd-summary").style.display  = "block";
+    document.getElementById("dd-summary").innerHTML = cached + disclaimerHtml(rcptNo);
+    return;
+  }
+  try {
+    const corpName = dartState.currentCompany?.corpName || '';
+    const res  = await fetch(`/api/summarize?rcptNo=${rcptNo}&mode=expert&corpName=${encodeURIComponent(corpName)}`);
+    const data = await res.json();
+    if (data.error) {
+      const e = new Error(data.error);
+      e.detail = data.detail || '';
+      throw e;
+    }
+    cacheReport(rcptNo, 'expert', data.data);
+    document.getElementById("dd-loading").style.display = "none";
+    document.getElementById("dd-summary").style.display  = "block";
+    document.getElementById("dd-summary").innerHTML = data.data + disclaimerHtml(rcptNo);
+  } catch(err) {
+    document.getElementById("dd-loading").style.display = "none";
+    document.getElementById("dd-summary").style.display  = "block";
+    document.getElementById("dd-summary").innerHTML = errBox('전문가용 로드 실패: ' + err.message);
+  }
+}
+
+/* ── 일반인/전문가 탭 버튼 ── */
+function ensureSummaryTabs(rcptNo) {
+  if (document.getElementById("dd-tabbar")) return;
+  const tabBar = document.createElement('div');
+  tabBar.id = 'dd-tabbar'; tabBar.className = 'deeptabs';
+  tabBar.style.cssText = 'max-width:340px; margin:0 0 20px;';
+  tabBar.innerHTML = `
+    <button id="ddTab_g" class="on" onclick="switchSummaryTab('general')">
+      일반인용<span class="sub">핵심만 쉽게</span>
+    </button>
+    <button id="ddTab_e" onclick="switchSummaryTab('expert')">
+      전문가용<span class="sub">심층 분석</span>
+    </button>`;
+  const dhead = document.querySelector('#disclosure-detail .dhead');
+  if (dhead) dhead.insertAdjacentElement('afterend', tabBar);
+}
+function switchSummaryTab(mode) {
+  _summaryMode = mode;
+  const tg = document.getElementById("ddTab_g");
+  const te = document.getElementById("ddTab_e");
+  if(tg) tg.classList.toggle('on', mode==='general');
+  if(te) te.classList.toggle('on', mode==='expert');
+  if (mode === 'general') {
+    const cached = getCached(_currentRcptNo, 'general');
+    if (cached) renderGeneralReport(cached, _currentRcptNo, _currentTitle);
+    else loadSummary(_currentRcptNo, _currentTitle, '', '');
+  } else {
+    loadExpertSummary(_currentRcptNo, _currentTitle);
+  }
+}
+
+function disclaimerHtml(rcptNo) {
+  return `<div class="disclaimer" style="margin-top:24px;">
+    ⚠️ 본 요약은 AI가 자동 생성한 참고용 정보입니다. 투자 결정 전 원문을 반드시 확인하세요.
+  </div>
+  <div style="margin-top:18px; text-align:center;">
+    <a href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${rcptNo}" target="_blank"
+       style="color:var(--gold);font-size:14px;font-weight:700;text-decoration:none;
+              border:1.5px solid var(--gold);border-radius:9px;padding:9px 18px;display:inline-block;">
+      📄 DART 원문 직접 보기 →
+    </a>
+  </div>`;
+}
+
+/* ── 간단한 마크다운 → HTML 변환 ── */
+function markdownToHtml(text) {
+  if (!text) return '';
+  const lines   = text.split('\n');
+  const out     = [];
+  let   inList  = false;
+
+  for (const raw of lines) {
+    const line = raw.trim();
+
+    if (!line) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      continue;
+    }
+    if (line.startsWith('## ')) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push('<h2>' + escHtml(line.slice(3)) + '</h2>');
+    } else if (line.startsWith('# ')) {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push('<h2>' + escHtml(line.slice(2)) + '</h2>');
+    } else if (line.startsWith('- ') || line.startsWith('* ')) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + inlineMd(line.slice(2)) + '</li>');
+    } else if (/^\d+\.\s/.test(line)) {
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + inlineMd(line.replace(/^\d+\.\s/, '')) + '</li>');
+    } else {
+      if (inList) { out.push('</ul>'); inList = false; }
+      out.push('<p>' + inlineMd(line) + '</p>');
+    }
+  }
+  if (inList) out.push('</ul>');
+  return out.join('\n');
+}
+
+function inlineMd(s) {
+  return escHtml(s)
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>');
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── 시작 ── */
+/* 시작 */
+updateFreePill();
+renderList();
+</script>
