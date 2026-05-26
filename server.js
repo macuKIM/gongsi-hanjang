@@ -302,12 +302,31 @@ function sortCorps(list, name) {
 }
 
 app.get('/api/companies', async (req, res) => {
-  const name = (req.query.name || '').trim();
-  if (!name) return res.json([]);
+  const name      = (req.query.name       || '').trim();
+  const stockCode = (req.query.stock_code || '').trim();
+  if (!name && !stockCode) return res.json([]);
   if (!DART_API_KEY) return res.status(500).json({ error: 'DART_API_KEY가 설정되지 않았습니다.' });
 
   try {
-    // ── ① 빠른 경로: list.json (1~2초) ─────────────────
+    // ── ① 최우선: stock_code → company.json (0.5초, 가장 정확) ─
+    if (stockCode && stockCode.length === 6) {
+      try {
+        const { data } = await axios.get('https://opendart.fss.or.kr/api/company.json', {
+          params: { crtfc_key: DART_API_KEY, stock_code: stockCode },
+          timeout: 5000,
+        });
+        if (data.status === '000' && data.corp_code) {
+          console.log('[/api/companies stock_code]', stockCode, '=>', data.corp_name, data.corp_code);
+          return res.json([{ corp_code: data.corp_code, corp_name: data.corp_name, stock_code: data.stock_code }]);
+        }
+      } catch (e) {
+        console.warn('[/api/companies stock_code] 실패:', e.message);
+      }
+    }
+
+    if (!name) return res.json([]);
+
+    // ── ② 빠른 경로: list.json 이름 검색 (1~2초) ─────────
     let results = [];
     try {
       const quick = await quickCorpLookup(name);
@@ -317,7 +336,7 @@ app.get('/api/companies', async (req, res) => {
       console.warn('[/api/companies fast] 실패, 전체 검색으로 폴백:', e.message);
     }
 
-    // ── ② 결과 없으면 corpCode.xml 폴백 ─────────────────
+    // ── ③ 결과 없으면 corpCode.xml 폴백 ──────────────────
     if (results.length === 0) {
       const corps = await getCorpList();
       results = sortCorps(corps.filter(c => c.corp_name.includes(name)), name);

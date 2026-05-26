@@ -1944,7 +1944,10 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
   try {
     // ① corp_code 없으면 /api/companies로 정확하게 찾기
     if (!corpCode) {
-      const searchRes  = await fetchWithTimeout('/api/companies?name=' + encodeURIComponent(corpName));
+      // stock_code 있으면 우선 넘김 — 이름 불일치 방지 (현대차 vs 현대자동차 등)
+      let _companiesUrl = '/api/companies?name=' + encodeURIComponent(corpName);
+      if (stockCode) _companiesUrl += '&stock_code=' + encodeURIComponent(stockCode);
+      const searchRes  = await fetchWithTimeout(_companiesUrl);
       const searchList = await searchRes.json();
       if (Array.isArray(searchList) && searchList.length > 0) {
         const match = searchList.find(c => c.corp_name === corpName) || searchList[0];
