@@ -781,7 +781,7 @@
   <div id="dd-loading" style="text-align:center; padding:60px 0;">
     <div style="font-size:40px; animation:spin 1.2s linear infinite; display:inline-block;">⏳</div>
     <div style="font-size:17px; font-weight:600; margin-top:16px; color:var(--ink);">AI가 공시를 분석하는 중...</div>
-    <div style="font-size:14px; color:var(--ink-soft); margin-top:8px;">보통 10~30초 정도 걸려요</div>
+    <div style="font-size:14px; color:var(--ink-soft); margin-top:8px;">DART 공시 분석 중 · 최대 60초</div>
   </div>
 
   <!-- 요약 결과 -->
@@ -1779,9 +1779,17 @@ function fmtDate(s) {
   return s.slice(0,4) + '.' + s.slice(4,6) + '.' + s.slice(6,8);
 }
 
-/* ── 오류 박스 ── */
+/* ── 오류 박스 (재시도 버튼 포함) ── */
 function errBox(msg) {
-  return `<div style="color:var(--up);background:var(--paper-2);border-radius:12px;padding:20px;">${msg}</div>`;
+  return `<div style="color:var(--up);background:var(--paper-2);border-radius:12px;padding:24px;text-align:center;">
+    <div style="font-size:32px;margin-bottom:12px;">😢</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:8px;">${msg}</div>
+    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:20px;">DART 서버가 바쁘거나 네트워크 상태가 좋지 않아요.</div>
+    <button onclick="location.reload()"
+      style="background:var(--up);color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;">
+      🔄 다시 시도
+    </button>
+  </div>`;
 }
 
 /* ─────────────────────────────────────────────
@@ -2272,13 +2280,33 @@ function setStreamLoadingMsg(msg) {
     <div style="font-size:14px; color:var(--ink-soft); margin-top:8px;">잠시만 기다려 주세요</div>`;
 }
 
-/* SSE 스트림 수신 — onProgress/onChunk/onDone/onError 콜백 */
+/* SSE 스트림 수신 — onProgress/onChunk/onDone/onError 콜백
+   ★ 핵심 보강:
+     1) resolved 플래그 — done/cached/error 한 번만 호출
+     2) 스트림이 done 이벤트 없이 닫히면 → onError 자동 호출
+     3) 60초 클라이언트 타임아웃 — 무한로딩 원천 차단
+*/
 function callStreamAPI(url, { onProgress, onChunk, onDone, onError }) {
   const controller = new AbortController();
+  let resolved = false;
+
+  const finish = (fn, ...args) => {
+    if (resolved) return;
+    resolved = true;
+    clearTimeout(timeoutId);
+    fn && fn(...args);
+  };
+
+  // 60초 안에 완료 안 되면 강제 오류 처리
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+    finish(onError, '60초가 지나도 응답이 없어요. 잠시 후 다시 시도해 주세요.');
+  }, 60000);
+
   (async () => {
     try {
       const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) throw new Error(`서버 오류 HTTP ${res.status}`);
       const reader = res.body.getReader();
       const dec    = new TextDecoder();
       let buf = '';
@@ -2287,24 +2315,31 @@ function callStreamAPI(url, { onProgress, onChunk, onDone, onError }) {
         if (done) break;
         buf += dec.decode(value, { stream: true });
         const parts = buf.split('\n\n');
-        buf = parts.pop(); // 불완전한 마지막 줄은 버퍼에 유지
+        buf = parts.pop();
         for (const part of parts) {
           if (!part.startsWith('data: ')) continue;
           try {
             const ev = JSON.parse(part.slice(6));
-            if      (ev.type === 'chunk')    { onChunk    && onChunk(ev.text); }
-            else if (ev.type === 'done')     { onDone     && onDone(ev.data, false); return; }
-            else if (ev.type === 'cached')   { onDone     && onDone(ev.data, true);  return; }
+            if      (ev.type === 'chunk')    { onChunk && onChunk(ev.text); }
+            else if (ev.type === 'done')     { finish(onDone, ev.data, false); return; }
+            else if (ev.type === 'cached')   { finish(onDone, ev.data, true);  return; }
             else if (ev.type === 'progress') { onProgress && onProgress(ev.msg); }
-            else if (ev.type === 'error')    { onError    && onError(ev.msg);  return; }
+            else if (ev.type === 'error')    { finish(onError, ev.msg); return; }
           } catch(_) {}
         }
       }
+      // 스트림이 done 이벤트 없이 끊긴 경우 (Vercel 타임아웃, 네트워크 단절 등)
+      finish(onError, '연결이 끊어졌어요. 다시 시도해 주세요.');
     } catch(e) {
-      if (e.name !== 'AbortError') onError && onError(e.message);
+      if (e.name === 'AbortError') {
+        // setTimeout에서 abort한 경우는 이미 finish 호출됨 — 추가 처리 불필요
+      } else {
+        finish(onError, '네트워크 오류: ' + e.message);
+      }
     }
   })();
-  return controller; // 필요 시 controller.abort()로 취소 가능
+
+  return controller;
 }
 
 /* ─────────────────────────────────────────────
