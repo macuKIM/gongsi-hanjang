@@ -360,11 +360,12 @@ async function getCorpList() {
   return corps;
 }
 
-// 결과 정렬 헬퍼
+// 결과 정렬 헬퍼 (대소문자 무시)
 function sortCorps(list, name) {
-  const exact   = list.filter(c => c.corp_name === name);
-  const starts  = list.filter(c => c.corp_name !== name && c.corp_name.startsWith(name));
-  const partial = list.filter(c => !c.corp_name.startsWith(name) && c.corp_name.includes(name));
+  const nl = name.toLowerCase();
+  const exact   = list.filter(c => c.corp_name.toLowerCase() === nl);
+  const starts  = list.filter(c => c.corp_name.toLowerCase() !== nl && c.corp_name.toLowerCase().startsWith(nl));
+  const partial = list.filter(c => !c.corp_name.toLowerCase().startsWith(nl) && c.corp_name.toLowerCase().includes(nl));
   const sort    = arr => arr.sort((a,b) => a.corp_name.localeCompare(b.corp_name, 'ko'));
   return [...exact, ...sort(starts), ...sort(partial)].slice(0, 30);
 }
@@ -414,10 +415,11 @@ app.get('/api/companies', async (req, res) => {
       console.warn('[/api/companies fast] 실패, 전체 검색으로 폴백:', e.message);
     }
 
-    // ── ③ 결과 없으면 corpCode.xml 폴백 ──────────────────
+    // ── ③ 결과 없으면 corpCode.xml 폴백 (대소문자 무시 부분일치) ──
     if (results.length === 0) {
       const corps = await getCorpList();
-      results = sortCorps(corps.filter(c => c.corp_name.includes(name)), name);
+      const nl = name.toLowerCase();
+      results = sortCorps(corps.filter(c => c.corp_name.toLowerCase().includes(nl)), name);
       console.log('[/api/companies full]', name, '→', results.length, '개');
     }
 

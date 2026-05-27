@@ -1883,7 +1883,7 @@ function showAutocomplete(val) {
   val = (val || '').trim();
   if (!val) { list.style.display='none'; return; }
 
-  const matches = POPULAR_CORPS.filter(c => c.corp_name.includes(val)).slice(0, 8);
+  const matches = POPULAR_CORPS.filter(c => c.corp_name.toLowerCase().includes(val.toLowerCase())).slice(0, 8);
   if (matches.length === 0) { list.style.display='none'; return; }
 
   list.innerHTML = matches.map((c, i) =>
@@ -1961,10 +1961,11 @@ async function searchDart(query, corpCode) {
   show("dart-results");
   document.getElementById("dart-results-title").textContent = '"' + query + '" 검색 결과';
 
-  // 서버 없이 클라이언트에서 직접 검색 (빠르고 정확)
-  const exact   = POPULAR_CORPS.filter(c => c.corp_name === query);
-  const starts  = POPULAR_CORPS.filter(c => c.corp_name !== query && c.corp_name.startsWith(query));
-  const partial = POPULAR_CORPS.filter(c => !c.corp_name.startsWith(query) && c.corp_name.includes(query));
+  // 서버 없이 클라이언트에서 직접 검색 (빠르고 정확, 대소문자 무시)
+  const ql      = query.toLowerCase();
+  const exact   = POPULAR_CORPS.filter(c => c.corp_name.toLowerCase() === ql);
+  const starts  = POPULAR_CORPS.filter(c => c.corp_name.toLowerCase() !== ql && c.corp_name.toLowerCase().startsWith(ql));
+  const partial = POPULAR_CORPS.filter(c => !c.corp_name.toLowerCase().startsWith(ql) && c.corp_name.toLowerCase().includes(ql));
   const list    = [...exact, ...starts, ...partial];
 
   if (list.length > 0) {
