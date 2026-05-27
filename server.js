@@ -703,6 +703,42 @@ ${docText}`;
 });
 
 // ─────────────────────────────────────────────────────────
+// 헬퍼: 재무제표에서 핵심 수치 행만 미리 추출
+//  압축 후에도 Gemini가 실제 숫자를 정확히 쓸 수 있도록
+//  주요 재무 지표 행을 문서 앞부분에 따로 주입
+// ─────────────────────────────────────────────────────────
+function extractKeyFinancials(rawText) {
+  const TARGET = ['매출액', '영업이익', '영업이익률', '당기순이익', '당기순손익',
+                  '자산총계', '부채총계', '자본총계'];
+  const YEAR_RE = /제\s*\d+\s*기/;
+
+  const lines  = rawText.split('\n');
+  const result = [];
+  let   headerLine = '';
+
+  for (const line of lines) {
+    // 연도 헤더 (예: "구분\t제25기\t제24기\t제23기") — 첫 번째만 채택
+    if (YEAR_RE.test(line) && line.includes('\t') && !headerLine) {
+      headerLine = line.trim();
+      continue;
+    }
+    for (const kw of TARGET) {
+      if (line.includes(kw)) {
+        const cells    = line.split('\t').map(s => s.trim());
+        const numCells = cells.filter(s => /^[\d,\.\-\(\)%]+$/.test(s) && s.length > 2);
+        if (numCells.length >= 2) result.push(line.trim());
+        break;
+      }
+    }
+    if (result.length >= 12) break; // 충분히 모았으면 스캔 중단
+  }
+
+  if (result.length === 0) return '';
+  const hdr = headerLine ? headerLine + '\n' : '';
+  return `[★ 핵심 재무 수치 — 아래 실제 숫자를 반드시 요약에 사용하세요. XX·XXX 플레이스홀더 절대 금지 ★]\n${hdr}${result.join('\n')}\n`;
+}
+
+// ─────────────────────────────────────────────────────────
 // 헬퍼: DART 문서 ZIP → 텍스트 추출 (두 엔드포인트 공용)
 // ─────────────────────────────────────────────────────────
 async function fetchDartDocText(rcptNo, mode) {
@@ -737,17 +773,25 @@ async function fetchDartDocText(rcptNo, mode) {
       .replace(/\n{3,}/g,'\n\n').trim();
     rawText += c + '\n\n';
   }
-  // 연속 숫자·탭 줄(재무표 raw 데이터)은 RECITATION 차단 원인 → 압축
+  // ① 핵심 재무 수치 미리 추출 (압축 전 — Gemini가 정확한 숫자를 쓰도록)
+  const keyFinancials = extractKeyFinancials(rawText);
+
+  // ② RECITATION 방지 압축 (탭 구분 숫자 6개↑ 연속만 압축 → 3~4개년 비교표는 살아남음)
   const compressed = rawText
-    .replace(/(\t[\d,\.\-\(\)]+){4,}/g, '\t[재무수치 생략]') // 탭으로 구분된 숫자 4개↑ 연속 → 압축
+    .replace(/(\t[\d,\.\-\(\)]+){6,}/g, '\t[재무수치 생략]')
     .replace(/\n{3,}/g, '\n\n');
+
   const MAX_FRONT = mode === 'expert' ? 16000 : 12000;
   const MAX_BACK  = mode === 'expert' ?  6000 :  4000;
+  let docBody;
   if (compressed.length > MAX_FRONT + MAX_BACK) {
-    return compressed.slice(0, MAX_FRONT) + '\n\n[... 중략 ...]\n\n' + compressed.slice(compressed.length - MAX_BACK);
+    docBody = compressed.slice(0, MAX_FRONT) + '\n\n[... 중략 ...]\n\n' + compressed.slice(compressed.length - MAX_BACK);
+  } else {
+    docBody = compressed;
   }
-  return compressed;
-  return rawText;
+
+  // ③ 핵심 재무 수치를 문서 앞에 주입 (중략돼도 핵심 숫자는 항상 Gemini에게 전달)
+  return keyFinancials ? keyFinancials + '\n\n' + docBody : docBody;
 }
 
 // ─────────────────────────────────────────────────────────
