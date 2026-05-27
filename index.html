@@ -435,6 +435,8 @@
 
   /* ── DART 실시간 섹션 ── */
   @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  /* 스트리밍 중 애니메이션 완전 정지 — innerHTML 교체해도 번쩍임 없음 */
+  .streaming, .streaming * { animation: none !important; transition: none !important; }
   /* viewer bubble */
   .viewer-bubble {
     position: absolute;
@@ -2440,24 +2442,22 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
     onProgress: (msg) => setStreamLoadingMsg(msg),
     onChunk: (text) => {
       accumulated += text;
-      // 첫 청크 도착 — 로딩 숨기고 텍스트 영역 표시
+      // 첫 청크 도착 — 로딩 숨기고 결과 div 표시
       if (accumulated.length === text.length) {
         document.getElementById("dd-loading").style.display = "none";
         summaryEl.style.display = "block";
-        // ★ innerHTML 대신 pre-wrap div + textContent 사용 → CSS 애니메이션 재시작 없음 → 깜빡임 완전 제거
-        summaryEl.innerHTML = '<div id="stream-wrap" style="white-space:pre-wrap;font-family:var(--sans,sans-serif);font-size:15px;line-height:1.8;color:var(--ink);padding:4px 0;"></div>';
+        summaryEl.classList.add('streaming'); // 애니메이션 전부 정지
+        summaryEl.innerHTML = '<div id="stream-wrap"></div>';
       }
+      // 포맷된 HTML 그대로 표시 — .streaming 덕분에 애니메이션 재시작 없음 → 번쩍임 없음
       const w = document.getElementById('stream-wrap');
-      if (w) {
-        // HTML 태그 제거 후 순수 텍스트만 표시 — 어떤 CSS 애니메이션도 발동하지 않음
-        w.textContent = accumulated.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&[a-z#0-9]+;/gi, '').replace(/\s+/g, ' ').trim();
-      }
+      if (w) w.innerHTML = accumulated;
     },
     onDone: (data) => {
       cacheReport(rcptNo, 'general', data);
+      summaryEl.classList.remove('streaming'); // 애니메이션 다시 켜기
       document.getElementById("dd-loading").style.display = "none";
       summaryEl.style.display = "block";
-      // 완료되면 스타일 잡힌 전체 HTML로 교체
       summaryEl.innerHTML = data + disclaimerHtml(rcptNo);
       if (!alreadySeen) markViewed(rcptNo);
     },
@@ -2588,19 +2588,19 @@ async function loadExpertSummary(rcptNo, title) {
     onProgress: (msg) => setStreamLoadingMsg(msg),
     onChunk: (text) => {
       accumulated += text;
-      // 첫 청크 도착 — 로딩 숨기고 텍스트 영역 표시
+      // 첫 청크 도착 — 로딩 숨기고 결과 div 표시
       if (accumulated.length === text.length) {
         document.getElementById("dd-loading").style.display = "none";
         summaryEl.style.display = "block";
-        summaryEl.innerHTML = '<div id="stream-wrap" style="white-space:pre-wrap;font-family:var(--sans,sans-serif);font-size:15px;line-height:1.8;color:var(--ink);padding:4px 0;"></div>';
+        summaryEl.classList.add('streaming');
+        summaryEl.innerHTML = '<div id="stream-wrap"></div>';
       }
       const w = document.getElementById('stream-wrap');
-      if (w) {
-        w.textContent = accumulated.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&[a-z#0-9]+;/gi, '').replace(/\s+/g, ' ').trim();
-      }
+      if (w) w.innerHTML = accumulated;
     },
     onDone: (data) => {
       cacheReport(rcptNo, 'expert', data);
+      summaryEl.classList.remove('streaming');
       document.getElementById("dd-loading").style.display = "none";
       summaryEl.style.display = "block";
       summaryEl.innerHTML = data + disclaimerHtml(rcptNo);
