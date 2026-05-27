@@ -134,12 +134,14 @@ app.get('/api/test', async (req, res) => {
 //   최신 고성능   → 'gemini-2.5-pro'
 // ─────────────────────────────────────────────────────────
 const GEMINI_MODELS = {
-  general: 'gemini-2.5-flash',   // 일반인용
-  expert : 'gemini-2.5-flash',   // 전문가용 — 업그레이드: 'gemini-2.5-pro'
+  general: 'gemini-2.5-flash',
+  expert : 'gemini-2.5-flash',
+  audit  : 'gemini-2.5-flash',
 };
 const GEMINI_TEMP = {
   general: 0.2,
   expert : 0.35,
+  audit  : 0.2,
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -236,6 +238,34 @@ const SYSTEM_GENERAL = `당신은 '공시한장' 서비스의 리포트 작성 A
     <ul>[2개의 &lt;li&gt;. 각 2~3문장.]</ul>
     <h4>감사인 의견</h4>
     <div class="note">[감사인 의견과 KAM을 쉽게 설명. 2~3문장.]</div>
+  </div>
+</div>`;
+
+// ── 감사보고서 전용 프롬프트 ─────────────────────────────
+const SYSTEM_AUDIT = `당신은 '공시한장' 서비스의 감사보고서 요약 AI입니다.
+외부 감사인(회계법인)이 작성한 감사보고서를 일반 투자자가 이해할 수 있도록 핵심만 뽑아 설명합니다.
+
+[출력 형식 — 반드시 아래 HTML 구조 그대로 출력. JSON·마크다운 금지.]
+<div class="report fade">
+  <div class="rkick">AI 요약 · 감사보고서 · Gemini 분석 · DART 공시 기반</div>
+  <h3>[회사명] 감사보고서 요약</h3>
+  <p class="lead">[감사 의견 한 줄 요약: 예) "적정 의견 — 회계처리에 중요한 문제가 없음"]</p>
+
+  <h4>감사 의견</h4>
+  <p>[적정/한정/부적정/의견거절 여부와 그 이유를 쉬운 말로 설명. 한정·부적정이면 이유 강조.]</p>
+
+  <h4>핵심 감사 사항 (KAM)</h4>
+  <p>[감사인이 특별히 주의 깊게 들여다본 항목들. 없으면 "별도 핵심 감사 사항 없음"으로 표시.]</p>
+
+  <h4>강조 사항</h4>
+  <p>[계속기업 불확실성, 소송·우발부채, 합병·구조조정 등 중요 강조사항. 없으면 생략.]</p>
+
+  <h4>재무 건전성 한눈에 보기</h4>
+  <p>[감사보고서에서 확인할 수 있는 주요 재무 수치(자산, 부채, 자본, 당기순손익) 간략 정리.]</p>
+
+  <div class="verdict">
+    <div class="vlbl">투자자 핵심 체크포인트</div>
+    <p>"[감사 의견·강조사항을 바탕으로 투자자가 주의해야 할 핵심 한 문장]"</p>
   </div>
 </div>`;
 
@@ -641,7 +671,7 @@ app.get('/api/summarize', async (req, res) => {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
       model            : modelName,
-      systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : SYSTEM_GENERAL,
+      systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
       generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
       safetySettings   : GEMINI_SAFETY,
     });
@@ -771,7 +801,7 @@ app.get('/api/summarize-stream', async (req, res) => {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({
       model            : modelName,
-      systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : SYSTEM_GENERAL,
+      systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
       generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
       safetySettings   : GEMINI_SAFETY,
     });

@@ -2211,7 +2211,7 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
     // 기업 정보 버튼 업데이트
     updateCorpInfoBtn(corpName, stockCode);
 
-    // ② 사업보고서: 최근 3년 내 최신 → 없으면 반기(1년) → 없으면 분기(1년) → 없으면 AI 폴백
+    // ② 보고서 우선순위: 사업보고서 → 반기 → 분기 → 감사보고서 → AI 일반지식
     function pickFromList(list, keyword) {
       const all  = list.filter(d => (d.report_nm || '').includes(keyword));
       if (!all.length) return [];
@@ -2236,7 +2236,11 @@ async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
         candidates = pickFromList(d반기.list, '분기보고서');
     }
 
-    // ③-D 없으면 — Gemini 일반지식 요약
+    // ③-D 감사보고서: 사업/반기/분기 없을 때 폴백 (36개월 데이터 재활용)
+    if (!candidates.length && d사업.status === '000' && d사업.list)
+      candidates = pickFromList(d사업.list, '감사보고서');
+
+    // ③-E 없으면 — Gemini 일반지식 요약
     if (!candidates.length) {
       loadNoReportSummary(corpCode, corpName);
       return;
@@ -2433,8 +2437,10 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
   document.getElementById("dd-summary").style.display  = "none";
   setStreamLoadingMsg('AI가 공시를 분석하는 중...');
 
-  const corpName  = dartState.currentCompany?.corpName || '';
-  const streamUrl = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=general&corpName=${encodeURIComponent(corpName)}`;
+  const corpName   = dartState.currentCompany?.corpName || '';
+  const isAudit    = (title || '').includes('감사보고서');
+  const reportType = isAudit ? 'audit' : 'general';
+  const streamUrl  = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=${reportType}&corpName=${encodeURIComponent(corpName)}`;
   const summaryEl = document.getElementById("dd-summary");
   let accumulated = '';
 
