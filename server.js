@@ -27,6 +27,53 @@ if (!GEMINI_API_KEY) console.warn('⚠️  GEMINI_API_KEY 미설정 — AI 요�
 
 // ── 정적 파일 서빙 ────────────────────────────────────────
 app.use(express.static(__dirname));
+app.use(express.json());
+
+// ═══════════════════════════════════════════════════════════
+//  실시간 조회자 추적 (메인 화면 "지금 N명 조회중" 기능)
+//  구조: corpCode → Map<sessionId, lastSeen(ms)>
+//  세션이 3분 동안 heartbeat 없으면 자동 만료
+// ═══════════════════════════════════════════════════════════
+const activeViewers = new Map(); // corpCode → Map<sessionId, timestamp>
+const VIEW_TIMEOUT  = 3 * 60 * 1000; // 3분
+
+// 만료된 세션 정리 (30초마다)
+setInterval(() => {
+  const now = Date.now();
+  for (const [corpCode, sessions] of activeViewers) {
+    for (const [sid, ts] of sessions) {
+      if (now - ts > VIEW_TIMEOUT) sessions.delete(sid);
+    }
+    if (sessions.size === 0) activeViewers.delete(corpCode);
+  }
+}, 30000);
+
+// 조회 시작 / heartbeat
+app.post('/api/view-start', (req, res) => {
+  const { corpCode, sessionId } = req.body || {};
+  if (!corpCode || !sessionId) return res.json({ ok: false });
+  if (!activeViewers.has(corpCode)) activeViewers.set(corpCode, new Map());
+  activeViewers.get(corpCode).set(sessionId, Date.now());
+  res.json({ ok: true });
+});
+
+// 조회 종료
+app.post('/api/view-end', (req, res) => {
+  const { corpCode, sessionId } = req.body || {};
+  if (corpCode && sessionId && activeViewers.has(corpCode)) {
+    activeViewers.get(corpCode).delete(sessionId);
+  }
+  res.json({ ok: true });
+});
+
+// 현재 조회자 수 (인기 종목 목록 조회)
+app.get('/api/view-counts', (req, res) => {
+  const result = {};
+  for (const [corpCode, sessions] of activeViewers) {
+    if (sessions.size > 0) result[corpCode] = sessions.size;
+  }
+  res.json(result);
+});
 
 // ─────────────────────────────────────────────────────────
 // 0. 상태 확인  GET /api/status
