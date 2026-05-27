@@ -1967,21 +1967,45 @@ async function searchDart(query, corpCode) {
   const partial = POPULAR_CORPS.filter(c => !c.corp_name.startsWith(query) && c.corp_name.includes(query));
   const list    = [...exact, ...starts, ...partial];
 
-  if (list.length === 0) {
-    document.getElementById("dart-results-list").innerHTML =
-      '<div style="grid-column:1/-1;color:var(--ink-soft);padding:24px 0;">' +
-      '검색 결과가 없어요. 위 자동완성 목록에서 선택하거나 정확한 회사명을 입력해 보세요.</div>';
+  if (list.length > 0) {
+    document.getElementById("dart-results-list").innerHTML = list.map((c, i) => {
+      return `<div class="card fade" style="animation-delay:${i*0.05}s"
+                   onclick="loadLatestReport('','${(c.corp_name||'').replace(/['"]/g,'')}','${c.stock_code||''}','')">
+        <div class="cname">${c.corp_name}</div>
+        <div class="ccode">${c.stock_code || '비상장'}</div>
+        <div class="oneliner" style="margin-top:12px;">클릭하면 AI 요약 바로 보기 ✨</div>
+      </div>`;
+    }).join('');
     return;
   }
 
-  document.getElementById("dart-results-list").innerHTML = list.map((c, i) => {
-    return `<div class="card fade" style="animation-delay:${i*0.05}s"
-                 onclick="loadLatestReport('','${(c.corp_name||'').replace(/['"]/g,'')}','${c.stock_code||''}','')">
-      <div class="cname">${c.corp_name}</div>
-      <div class="ccode">${c.stock_code || '비상장'}</div>
-      <div class="oneliner" style="margin-top:12px;">클릭하면 AI 요약 바로 보기 ✨</div>
-    </div>`;
-  }).join('');
+  // ── 인기 목록에 없으면 서버 API로 전체 기업 부분일치 검색 ──
+  // (DART corpCode.xml 9만개 기업 대상, "현대중공업" → "HD현대중공업" 등 찾아줌)
+  document.getElementById("dart-results-list").innerHTML =
+    '<div style="grid-column:1/-1;color:var(--ink-soft);padding:24px 0;">🔍 전체 기업 목록에서 검색 중...</div>';
+
+  try {
+    const res  = await fetch('/api/companies?name=' + encodeURIComponent(query));
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      document.getElementById("dart-results-list").innerHTML = data.map((c, i) => {
+        return `<div class="card fade" style="animation-delay:${i*0.05}s"
+                     onclick="loadLatestReport('${c.corp_code||''}','${(c.corp_name||'').replace(/['"]/g,'')}','${c.stock_code||''}','')">
+          <div class="cname">${c.corp_name}</div>
+          <div class="ccode">${c.stock_code || '비상장'}</div>
+          <div class="oneliner" style="margin-top:12px;">클릭하면 AI 요약 바로 보기 ✨</div>
+        </div>`;
+      }).join('');
+    } else {
+      document.getElementById("dart-results-list").innerHTML =
+        '<div style="grid-column:1/-1;color:var(--ink-soft);padding:24px 0;">' +
+        '검색 결과가 없어요. 정확한 회사명을 입력해 보세요.</div>';
+    }
+  } catch (e) {
+    document.getElementById("dart-results-list").innerHTML =
+      '<div style="grid-column:1/-1;color:var(--ink-soft);padding:24px 0;">' +
+      '검색 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.</div>';
+  }
 }
 
 /* ─────────────────────────────────────────────
