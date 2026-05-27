@@ -1088,7 +1088,9 @@ function show(id){
   window.scrollTo({top:0, behavior:"smooth"});
 }
 function showSection(id){ show(id); }
-function goHome(){
+let _goingBack = false; // popstate 루프 방지 플래그
+
+function goHome(fromPopstate = false){
   state.current = null;
   // 검색창 초기화
   const searchEl = document.getElementById('search');
@@ -1101,7 +1103,22 @@ function goHome(){
   // 조회 종료 알림
   endViewTracking();
   show("home");
+  // History: 홈 상태로 replace (뒤로가기에서 호출 시 pushState 하지 않음)
+  if (!fromPopstate) {
+    history.replaceState({ page: 'home' }, '');
+  }
 }
+
+// 브라우저 뒤로가기 버튼 처리
+window.addEventListener('popstate', () => {
+  if (_goingBack) return;
+  _goingBack = true;
+  goHome(true);
+  _goingBack = false;
+});
+
+// 초기 홈 상태 등록
+history.replaceState({ page: 'home' }, '');
 
 // ── 실시간 조회자 추적 ──────────────────────────────────────
 const _SESSION_ID = Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -1779,17 +1796,30 @@ function fmtDate(s) {
   return s.slice(0,4) + '.' + s.slice(4,6) + '.' + s.slice(6,8);
 }
 
-/* ── 오류 박스 (재시도 버튼 포함) ── */
+/* ── 오류 박스 (스마트 재시도 버튼 포함) ── */
 function errBox(msg) {
   return `<div style="color:var(--up);background:var(--paper-2);border-radius:12px;padding:24px;text-align:center;">
     <div style="font-size:32px;margin-bottom:12px;">😢</div>
     <div style="font-weight:700;font-size:16px;margin-bottom:8px;">${msg}</div>
-    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:20px;">DART 서버가 바쁘거나 네트워크 상태가 좋지 않아요.</div>
-    <button onclick="location.reload()"
+    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:20px;">Gemini AI가 바쁜 상태예요. 잠시 후 다시 시도하면 대부분 해결돼요.</div>
+    <button onclick="retryCurrentSummary()"
       style="background:var(--up);color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;">
       🔄 다시 시도
     </button>
   </div>`;
+}
+
+/* ── 현재 요약 재시도 ── */
+function retryCurrentSummary() {
+  if (_currentRcptNo) {
+    if (_summaryMode === 'expert') {
+      loadExpertSummary(_currentRcptNo, _currentTitle);
+    } else {
+      loadSummary(_currentRcptNo, _currentTitle, '', '', []);
+    }
+  } else {
+    location.reload();
+  }
 }
 
 /* ─────────────────────────────────────────────
@@ -2061,6 +2091,7 @@ async function searchDart(query, corpCode) {
     return;
   }
 
+  history.pushState({ page: 'dart-results', query }, '');
   show("dart-results");
   document.getElementById("dart-results-title").textContent = '"' + query + '" 검색 결과';
 
@@ -2134,6 +2165,8 @@ async function fetchWithTimeout(url, timeoutMs = 45000) {
 async function loadLatestReport(corpCode, corpName, stockCode, corpCls) {
   // 실시간 조회자 추적 시작 (stock_code 기준)
   if (stockCode) startViewTracking(stockCode);
+  // 브라우저 히스토리 등록 (뒤로가기 지원)
+  history.pushState({ page: 'disclosure-detail', corpName }, '');
   // 바로 요약 화면으로 전환 후 로딩 상태 표시
   show("disclosure-detail");
   document.getElementById("dd-title").textContent = corpName + ' — 공시 불러오는 중...';

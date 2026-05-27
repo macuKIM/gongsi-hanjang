@@ -269,7 +269,7 @@ function yyyymmdd(date) { return date.toISOString().slice(0,10).replace(/-/g,'')
 // ─────────────────────────────────────────────────────────
 // Gemini 503 재시도 헬퍼 (고수요 시 자동 재시도)
 // ─────────────────────────────────────────────────────────
-async function withRetry(fn, maxRetries = 3, baseDelayMs = 4000) {
+async function withRetry(fn, maxRetries = 5, baseDelayMs = 3000, onRetry) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
@@ -280,7 +280,8 @@ async function withRetry(fn, maxRetries = 3, baseDelayMs = 4000) {
                     (err.status === 503);
       if (is503 && attempt < maxRetries - 1) {
         const delay = baseDelayMs * (attempt + 1);
-        console.warn(`[Gemini] 503 재시도 ${attempt + 1}/${maxRetries - 1} — ${delay}ms 대기 중...`);
+        console.warn(`[Gemini] 503 재시도 ${attempt + 1}/${maxRetries} — ${delay}ms 대기 중...`);
+        if (onRetry) onRetry(attempt + 1, maxRetries);
         await new Promise(r => setTimeout(r, delay));
       } else {
         throw err;
@@ -761,7 +762,11 @@ app.get('/api/summarize-stream', async (req, res) => {
       generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
     });
 
-    const streamResult = await withRetry(() => model.generateContentStream(userMsg));
+    const streamResult = await withRetry(
+      () => model.generateContentStream(userMsg),
+      5, 3000,
+      (attempt, max) => send({ type: 'progress', msg: `⏳ Gemini 서버가 바빠서 재시도 중... (${attempt}/${max})` })
+    );
     let fullText = '';
 
     for await (const chunk of streamResult.stream) {
