@@ -737,11 +737,16 @@ async function fetchDartDocText(rcptNo, mode) {
       .replace(/\n{3,}/g,'\n\n').trim();
     rawText += c + '\n\n';
   }
-  const MAX_FRONT = mode === 'expert' ? 18000 : 14000;
-  const MAX_BACK  = mode === 'expert' ?  8000 :  6000;
-  if (rawText.length > MAX_FRONT + MAX_BACK) {
-    return rawText.slice(0, MAX_FRONT) + '\n\n[... 중략 ...]\n\n' + rawText.slice(rawText.length - MAX_BACK);
+  // 연속 숫자·탭 줄(재무표 raw 데이터)은 RECITATION 차단 원인 → 압축
+  const compressed = rawText
+    .replace(/(\t[\d,\.\-\(\)]+){4,}/g, '\t[재무수치 생략]') // 탭으로 구분된 숫자 4개↑ 연속 → 압축
+    .replace(/\n{3,}/g, '\n\n');
+  const MAX_FRONT = mode === 'expert' ? 16000 : 12000;
+  const MAX_BACK  = mode === 'expert' ?  6000 :  4000;
+  if (compressed.length > MAX_FRONT + MAX_BACK) {
+    return compressed.slice(0, MAX_FRONT) + '\n\n[... 중략 ...]\n\n' + compressed.slice(compressed.length - MAX_BACK);
   }
+  return compressed;
   return rawText;
 }
 
@@ -812,13 +817,32 @@ app.get('/api/summarize-stream', async (req, res) => {
       (attempt, max) => send({ type: 'progress', msg: `⏳ Gemini 서버가 바빠서 재시도 중... (${attempt}/${max})` })
     );
     let fullText = '';
+    let blockedChunks = 0;
 
     for await (const chunk of streamResult.stream) {
-      const text = chunk.text();
-      if (text) {
-        fullText += text;
-        send({ type: 'chunk', text });
+      try {
+        const text = chunk.text();
+        if (text) {
+          fullText += text;
+          send({ type: 'chunk', text });
+        }
+      } catch (chunkErr) {
+        // PROHIBITED_CONTENT / RECITATION 등 특정 청크만 차단된 경우 → 스킵하고 계속
+        const msg = chunkErr.message || '';
+        if (msg.includes('PROHIBITED_CONTENT') || msg.includes('RECITATION') || msg.includes('blocked')) {
+          blockedChunks++;
+          console.warn(`[stream] 청크 ${blockedChunks}개 차단 — 스킵 후 계속`);
+          continue; // 다음 청크 계속 수신
+        }
+        throw chunkErr; // 다른 오류는 상위 catch로
       }
+    }
+
+    // 이미 충분한 내용이 쌓였으면 (300자↑) → 부분 결과라도 완료 처리
+    if (fullText.length < 100) {
+      send({ type: 'error', msg: `응답이 전부 차단됐어요. 잠시 후 다시 시도해 주세요. (차단 청크: ${blockedChunks}개)` });
+      res.end();
+      return;
     }
 
     // 코드블록 래핑 제거 (```html, ```json 등)
@@ -826,12 +850,19 @@ app.get('/api/summarize-stream', async (req, res) => {
 
     saveToCache(cacheKey, cleanedOutput, { corpName, mode });
     send({ type: 'done', data: cleanedOutput });
-    console.log(`[stream] ✅ 완료: ${cacheKey}`);
+    console.log(`[stream] ✅ 완료: ${cacheKey} (차단 청크: ${blockedChunks}개)`);
     res.end();
 
   } catch (err) {
-    console.error('[stream] 오류:', err.message);
-    send({ type: 'error', msg: 'AI 요약 오류: ' + err.message });
+    const errMsg = err.message || '';
+    // PROHIBITED_CONTENT가 초기 연결 단계에서 발생한 경우
+    if (errMsg.includes('PROHIBITED_CONTENT') || errMsg.includes('RECITATION')) {
+      console.warn('[stream] 전체 차단 — 문서 길이 줄여서 재시도 불가 (이미 최소화됨)');
+      send({ type: 'error', msg: 'AI 필터에 걸렸어요. 잠시 후 다시 시도해 주세요.' });
+    } else {
+      console.error('[stream] 오류:', errMsg);
+      send({ type: 'error', msg: 'AI 요약 오류: ' + errMsg });
+    }
     res.end();
   }
 });
