@@ -2440,20 +2440,24 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
     onProgress: (msg) => setStreamLoadingMsg(msg),
     onChunk: (text) => {
       accumulated += text;
-      // 첫 청크 도착 — 로딩 숨기고 결과 div 바로 표시
+      // 첫 청크 도착 — 로딩 숨기고 텍스트 영역 표시
       if (accumulated.length === text.length) {
         document.getElementById("dd-loading").style.display = "none";
         summaryEl.style.display = "block";
-        summaryEl.innerHTML = '<div id="stream-wrap"></div>';
+        // ★ innerHTML 대신 pre-wrap div + textContent 사용 → CSS 애니메이션 재시작 없음 → 깜빡임 완전 제거
+        summaryEl.innerHTML = '<div id="stream-wrap" style="white-space:pre-wrap;font-family:var(--sans,sans-serif);font-size:15px;line-height:1.8;color:var(--ink);padding:4px 0;"></div>';
       }
-      // 청크마다 즉시 업데이트 (깜빡임 없이)
       const w = document.getElementById('stream-wrap');
-      if (w) w.innerHTML = accumulated;
+      if (w) {
+        // HTML 태그 제거 후 순수 텍스트만 표시 — 어떤 CSS 애니메이션도 발동하지 않음
+        w.textContent = accumulated.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&[a-z#0-9]+;/gi, '').replace(/\s+/g, ' ').trim();
+      }
     },
     onDone: (data) => {
       cacheReport(rcptNo, 'general', data);
       document.getElementById("dd-loading").style.display = "none";
       summaryEl.style.display = "block";
+      // 완료되면 스타일 잡힌 전체 HTML로 교체
       summaryEl.innerHTML = data + disclaimerHtml(rcptNo);
       if (!alreadySeen) markViewed(rcptNo);
     },
@@ -2466,7 +2470,7 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
       }
       document.getElementById("dd-loading").style.display = "none";
       summaryEl.style.display = "block";
-      summaryEl.innerHTML = errBox('😢 요약 실패: ' + msg + '<br><small>문제가 계속되면 /api/status 를 확인해 주세요.</small>');
+      summaryEl.innerHTML = errBox(msg);
     },
   });
 }
@@ -2584,15 +2588,16 @@ async function loadExpertSummary(rcptNo, title) {
     onProgress: (msg) => setStreamLoadingMsg(msg),
     onChunk: (text) => {
       accumulated += text;
-      // 첫 청크 도착 — 로딩 숨기고 결과 div 바로 표시
+      // 첫 청크 도착 — 로딩 숨기고 텍스트 영역 표시
       if (accumulated.length === text.length) {
         document.getElementById("dd-loading").style.display = "none";
         summaryEl.style.display = "block";
-        summaryEl.innerHTML = '<div id="stream-wrap"></div>';
+        summaryEl.innerHTML = '<div id="stream-wrap" style="white-space:pre-wrap;font-family:var(--sans,sans-serif);font-size:15px;line-height:1.8;color:var(--ink);padding:4px 0;"></div>';
       }
-      // 청크마다 즉시 업데이트 (깜빡임 없이)
       const w = document.getElementById('stream-wrap');
-      if (w) w.innerHTML = accumulated;
+      if (w) {
+        w.textContent = accumulated.replace(/<[^>]*>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&[a-z#0-9]+;/gi, '').replace(/\s+/g, ' ').trim();
+      }
     },
     onDone: (data) => {
       cacheReport(rcptNo, 'expert', data);
@@ -2603,7 +2608,7 @@ async function loadExpertSummary(rcptNo, title) {
     onError: (msg) => {
       document.getElementById("dd-loading").style.display = "none";
       summaryEl.style.display = "block";
-      summaryEl.innerHTML = errBox('전문가용 로드 실패: ' + msg);
+      summaryEl.innerHTML = errBox(msg);
     },
   });
 }
