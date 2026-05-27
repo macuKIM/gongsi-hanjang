@@ -75,6 +75,18 @@ app.get('/api/view-counts', (req, res) => {
   res.json(result);
 });
 
+// ═══════════════════════════════════════════════════════════
+//  Gemini 안전 필터 설정
+//  DART 금융 공시 문서는 합법적 내용 — 보험 약관·재무표 등이
+//  오탐(false positive)으로 PROHIBITED_CONTENT 처리되는 것을 방지
+// ═══════════════════════════════════════════════════════════
+const GEMINI_SAFETY = [
+  { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH',        threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT',  threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT',  threshold: 'BLOCK_NONE' },
+];
+
 // ─────────────────────────────────────────────────────────
 // 0. 상태 확인  GET /api/status
 // ─────────────────────────────────────────────────────────
@@ -630,7 +642,8 @@ app.get('/api/summarize', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 }
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
+      safetySettings   : GEMINI_SAFETY,
     });
 
     const userMsg = `다음 사업보고서를 분석하여 ${mode === 'expert' ? '전문가용 HTML' : '일반인용 JSON'} 리포트를 작성해주세요.
@@ -760,6 +773,7 @@ app.get('/api/summarize-stream', async (req, res) => {
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : SYSTEM_GENERAL,
       generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
+      safetySettings   : GEMINI_SAFETY,
     });
 
     const streamResult = await withRetry(
@@ -817,7 +831,8 @@ app.get('/api/no-report-summary', async (req, res) => {
 DART 공시 원문 없이 학습 데이터만으로 기업 개요를 작성합니다.
 반드시 JSON만 출력하세요. 마크다운 코드블록 금지.
 모르는 내용은 추측하지 말고 "정보 없음"으로 표시하세요.`,
-      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
+      generationConfig: { temperature: 0.2, maxOutputTokens: 2048 },
+      safetySettings  : GEMINI_SAFETY,
     });
 
     const prompt = `${corpName}에 대해 알고 있는 정보로 아래 JSON 형식으로 작성해주세요.

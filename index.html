@@ -1798,10 +1798,17 @@ function fmtDate(s) {
 
 /* ── 오류 박스 (스마트 재시도 버튼 포함) ── */
 function errBox(msg) {
+  const isProhibited = msg.includes('PROHIBITED_CONTENT');
+  const is503        = msg.includes('503') || msg.includes('high demand') || msg.includes('UNAVAILABLE');
+  const subMsg = isProhibited
+    ? '이 공시 문서의 일부 내용이 AI 필터에 걸렸어요. 다시 시도하면 해결되는 경우가 많아요.'
+    : is503
+      ? 'Gemini AI가 바쁜 상태예요. 잠시 후 다시 시도하면 대부분 해결돼요.'
+      : 'DART 서버 또는 네트워크 상태가 좋지 않아요. 잠시 후 다시 시도해 주세요.';
   return `<div style="color:var(--up);background:var(--paper-2);border-radius:12px;padding:24px;text-align:center;">
     <div style="font-size:32px;margin-bottom:12px;">😢</div>
-    <div style="font-weight:700;font-size:16px;margin-bottom:8px;">${msg}</div>
-    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:20px;">Gemini AI가 바쁜 상태예요. 잠시 후 다시 시도하면 대부분 해결돼요.</div>
+    <div style="font-weight:700;font-size:16px;margin-bottom:8px;">요약에 실패했어요</div>
+    <div style="color:var(--ink-soft);font-size:14px;margin-bottom:20px;">${subMsg}</div>
     <button onclick="retryCurrentSummary()"
       style="background:var(--up);color:#fff;border:none;border-radius:10px;padding:12px 28px;font-size:15px;font-weight:700;cursor:pointer;">
       🔄 다시 시도
