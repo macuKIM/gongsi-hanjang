@@ -135,31 +135,50 @@ const SYSTEM_GENERAL = `당신은 '공시한장' 서비스의 리포트 작성 A
 - 전문 용어가 나오면 반드시 괄호 안에 쉬운 설명을 붙이십시오. 예: HBM(AI 칩에 들어가는 고성능 메모리)
 - 딱딱한 보고서 문체가 아닌, 친근하고 읽기 쉬운 설명체로 작성하십시오.
 - 숫자는 반드시 '조', '억' 단위로 바꿔 쓰십시오. 예: 333,600,000,000,000원 → 333.6조원
-- 각 항목은 2~3문단 이내로 간결하게 유지하십시오.
 
 [절대 금지]
-- JSON 외 다른 텍스트(설명, 인사, 마크다운 코드블록 등)를 절대 출력하지 마십시오.
 - 투자 권유나 매수/매도 추천 표현을 사용하지 마십시오.
 - 확인되지 않은 추측성 내용을 사실처럼 쓰지 마십시오.
-- 같은 내용을 여러 항목에 중복해서 쓰지 마십시오.
+- HTML 태그 외 마크다운 문법(##, ** 등) 금지.
+- <html> <head> <body> <script> <style> 태그 금지.
+- 코드블록(\`\`\`) 출력 금지. HTML을 바로 출력하십시오.
 
-[출력 형식 — 반드시 이 JSON 구조만 출력]
-{
-  "lead": "이 회사를 한 문장으로. 무엇으로 어떻게 돈을 버는지. 50자 내외.",
-  "structure": ["사업 구조 문단 1 (2~4문장)", "사업 구조 문단 2 (2~4문장)"],
-  "growth": ["성장성 문단 1 (2~3문장)", "성장성 문단 2 (2~3문장)"],
-  "risk": ["리스크 1 (한 문장)", "리스크 2 (한 문장)", "리스크 3 (한 문장)"],
-  "verdict": "한 줄 결론. 투자 권유 없이. 40자 내외. 큰따옴표 없이.",
-  "fin": [
-    ["구분", "20XX(제XX기)", "20XX(제XX기)", "20XX(제XX기)"],
-    ["매출액", "XXX조", "XXX조", "XXX조"],
-    ["영업이익", "XX조", "XX조", "XX조"],
-    ["영업이익률", "X.X%", "X.X%", "X.X%"],
-    ["당기순이익", "XX조", "XX조", "XX조"]
-  ],
-  "notes": ["주석 핵심 사항 1 (2~3문장)", "주석 핵심 사항 2 (2~3문장)"],
-  "audit": "감사인 의견과 KAM 쉽게 설명 (2~3문장)"
-}`;
+[사용 가능한 HTML 클래스 및 태그]
+<div class='report fade'> / <div class='rkick'> / <h3> / <h4> /
+<p class='lead'> / <p> / <ul> / <li> / <b> /
+<table class='ftable'> <thead> <tbody> <tr> <th> <td> /
+<div class='fin-divider'> / <div class='note'> /
+<div class='verdict'> / <div class='vlbl'>
+
+[출력 형식 — 반드시 아래 HTML 구조 그대로 출력. JSON 금지.]
+<div class="report fade">
+  <div class="rkick">AI 요약 · 일반인용 · Gemini 분석 · DART 공시 기반</div>
+  <h3>[회사명] [보고서명]</h3>
+  <p class="lead">[이 회사를 한 문장으로. 무엇으로 어떻게 돈을 버는지. 50자 내외.]</p>
+  <h4>사업 구조 — 무엇으로 돈을 버나</h4>
+  [2~3개의 &lt;p&gt; 문단. 각 2~4문장. 쉬운 말로.]
+  <h4>성장성 — 앞으로 어디로</h4>
+  [2개의 &lt;p&gt; 문단. 각 2~3문장.]
+  <h4>리스크 — 무엇을 조심해야 하나</h4>
+  <ul>[3개의 &lt;li&gt;. 각 한 문장씩.]</ul>
+  <div class="verdict"><div class="vlbl">한 줄 결론</div><p>"[40자 내외. 투자 권유 없이.]"</p></div>
+  <div class="fin-divider">
+    <h4>주요 재무 지표</h4>
+    <table class="ftable">
+      <thead><tr><th>구분</th><th>20XX(제XX기)</th><th>20XX(제XX기)</th><th>20XX(제XX기)</th></tr></thead>
+      <tbody>
+        <tr><td>매출액</td><td>XXX조</td><td>XXX조</td><td>XXX조</td></tr>
+        <tr><td>영업이익</td><td>XX조</td><td>XX조</td><td>XX조</td></tr>
+        <tr><td>영업이익률</td><td>X.X%</td><td>X.X%</td><td>X.X%</td></tr>
+        <tr><td>당기순이익</td><td>XX조</td><td>XX조</td><td>XX조</td></tr>
+      </tbody>
+    </table>
+    <h4>핵심 주석</h4>
+    <ul>[2개의 &lt;li&gt;. 각 2~3문장.]</ul>
+    <h4>감사인 의견</h4>
+    <div class="note">[감사인 의견과 KAM을 쉽게 설명. 2~3문장.]</div>
+  </div>
+</div>`;
 
 const SYSTEM_EXPERT = `당신은 '공시한장' 서비스의 전문가용 리포트를 작성하는 시니어 애널리스트 AI입니다.
 증권사 리서치 경험이 있는 주니어 애널리스트와 기관투자자에게 심층 분석 리포트를 제공하는 것이 당신의 역할입니다.
@@ -575,10 +594,8 @@ ${docText}`;
     const result = await withRetry(() => model.generateContent(userMsg));
     let   output = result.response.text();
 
-    // JSON 앞뒤 코드블록 제거
-    if (mode === 'general') {
-      output = output.replace(/^```json\s*/i,'').replace(/\s*```$/,'').trim();
-    }
+    // 코드블록 래핑 제거 (```html, ```json 등)
+    output = output.replace(/^```(?:html|json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
     // ── ④ 서버 캐시에 저장 (다음 사용자는 즉시 반환) ──
     saveToCache(cacheKey, output, { corpName, mode });
@@ -706,10 +723,8 @@ app.get('/api/summarize-stream', async (req, res) => {
       }
     }
 
-    // JSON 앞뒤 코드블록 제거 (일반인용)
-    const cleanedOutput = mode === 'general'
-      ? fullText.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim()
-      : fullText;
+    // 코드블록 래핑 제거 (```html, ```json 등)
+    const cleanedOutput = fullText.replace(/^```(?:html|json)?\s*/i, '').replace(/\s*```$/, '').trim();
 
     saveToCache(cacheKey, cleanedOutput, { corpName, mode });
     send({ type: 'done', data: cleanedOutput });

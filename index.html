@@ -2218,7 +2218,14 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
   const cached = getCached(rcptNo, 'general');
   if (cached) {
     console.log('[loadSummary] 캐시 로드');
-    renderGeneralReport(cached, rcptNo, title);
+    // 구버전 JSON 캐시 호환 처리
+    if (cached.trim().startsWith('{')) {
+      renderGeneralReport(cached, rcptNo, title);
+    } else {
+      document.getElementById("dd-loading").style.display = "none";
+      document.getElementById("dd-summary").style.display  = "block";
+      document.getElementById("dd-summary").innerHTML = cached + disclaimerHtml(rcptNo);
+    }
     if (!alreadySeen) markViewed(rcptNo);
     return;
   }
@@ -2229,16 +2236,35 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
 
   const corpName  = dartState.currentCompany?.corpName || '';
   const streamUrl = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=general&corpName=${encodeURIComponent(corpName)}`;
+  const summaryEl = document.getElementById("dd-summary");
+  let accumulated = '';
+  let updateTimer = null;
 
   callStreamAPI(streamUrl, {
     onProgress: (msg) => setStreamLoadingMsg(msg),
-    onChunk: () => {},  // 일반인용은 JSON 완성 후 렌더 — 청크는 버퍼링만
+    onChunk: (text) => {
+      accumulated += text;
+      // 첫 청크 도착 — 로딩 숨기고 결과 div 바로 표시
+      if (accumulated.length === text.length) {
+        document.getElementById("dd-loading").style.display = "none";
+        summaryEl.style.display = "block";
+        summaryEl.innerHTML = '<div id="stream-wrap"></div><span class="stream-cursor">▋</span>';
+        updateTimer = setInterval(() => {
+          const w = document.getElementById('stream-wrap');
+          if (w) w.innerHTML = accumulated;
+        }, 400);
+      }
+    },
     onDone: (data) => {
+      if (updateTimer) clearInterval(updateTimer);
       cacheReport(rcptNo, 'general', data);
-      renderGeneralReport(data, rcptNo, title);
+      document.getElementById("dd-loading").style.display = "none";
+      summaryEl.style.display = "block";
+      summaryEl.innerHTML = data + disclaimerHtml(rcptNo);
       if (!alreadySeen) markViewed(rcptNo);
     },
     onError: (msg) => {
+      if (updateTimer) clearInterval(updateTimer);
       // ZIP 오류 등 → 다음 후보 자동 재시도
       if (_candidates.length > 0) {
         console.warn('[loadSummary stream] 실패, 다음 후보 시도:', _candidates[0].report_nm, msg);
@@ -2246,9 +2272,8 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
         return;
       }
       document.getElementById("dd-loading").style.display = "none";
-      document.getElementById("dd-summary").style.display  = "block";
-      document.getElementById("dd-summary").innerHTML =
-        errBox('😢 요약 실패: ' + msg + '<br><small>문제가 계속되면 /api/status 를 확인해 주세요.</small>');
+      summaryEl.style.display = "block";
+      summaryEl.innerHTML = errBox('😢 요약 실패: ' + msg + '<br><small>문제가 계속되면 /api/status 를 확인해 주세요.</small>');
     },
   });
 }
@@ -2371,11 +2396,11 @@ async function loadExpertSummary(rcptNo, title) {
       if (accumulated.length === text.length) {
         document.getElementById("dd-loading").style.display = "none";
         summaryEl.style.display = "block";
-        summaryEl.innerHTML = '';
-        // 250ms마다 DOM 업데이트 (깜빡임 최소화)
+        summaryEl.innerHTML = '<div id="stream-wrap"></div><span class="stream-cursor">▋</span>';
         updateTimer = setInterval(() => {
-          summaryEl.innerHTML = accumulated + '<span class="stream-cursor">▋</span>';
-        }, 250);
+          const w = document.getElementById('stream-wrap');
+          if (w) w.innerHTML = accumulated;
+        }, 400);
       }
     },
     onDone: (data) => {
@@ -2433,7 +2458,7 @@ function switchSummaryTab(mode) {
 
 function disclaimerHtml(rcptNo) {
   return `<div class="disclaimer" style="margin-top:24px;">
-    ⚠️ 본 요약은 AI가 자동 생성한 참고용 정보입니다. 투자 결정 전 원문을 반드시 확인하세요.
+    ⚠️ 본 자료는 AI가 자동 생성한 참고용 정보입니다. 투자 권유가 아니며, 모든 투자 결정과 그에 따른 손익의 책임은 전적으로 본인에게 있습니다. 투자 전 반드시 DART 원문 및 전문가 의견을 확인하시기 바랍니다.
   </div>
   <div style="margin-top:18px; text-align:center;">
     <a href="https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${rcptNo}" target="_blank"
