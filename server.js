@@ -593,6 +593,137 @@ ${docText}`;
 });
 
 // ─────────────────────────────────────────────────────────
+// 헬퍼: DART 문서 ZIP → 텍스트 추출 (두 엔드포인트 공용)
+// ─────────────────────────────────────────────────────────
+async function fetchDartDocText(rcptNo, mode) {
+  const docRes = await axios.get('https://opendart.fss.or.kr/api/document.xml', {
+    params: { crtfc_key: DART_API_KEY, rcept_no: rcptNo },
+    responseType: 'arraybuffer', timeout: 30000,
+  });
+  const docBuf = Buffer.from(docRes.data);
+  if (docBuf.length < 4 || docBuf[0] !== 0x50 || docBuf[1] !== 0x4B) {
+    const preview = docBuf.toString('utf-8').slice(0, 120).replace(/[\r\n]+/g, ' ');
+    throw new Error('ZIP 형식 아님 — DART가 오류 페이지를 반환했을 수 있어요: ' + preview);
+  }
+  const zip = new AdmZip(docBuf);
+  let rawText = '';
+  for (const entry of zip.getEntries()) {
+    if (entry.isDirectory) continue;
+    const buf = entry.getData();
+    let content;
+    try {
+      content = iconv.decode(buf, 'utf-8');
+      if (content.includes('')) content = iconv.decode(buf, 'euc-kr');
+    } catch { content = buf.toString('utf-8'); }
+    let c = content
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi,  '');
+    c = c
+      .replace(/<\/tr>/gi, '\n').replace(/<tr[^>]*>/gi, '')
+      .replace(/<\/t[hd]>/gi, '\t').replace(/<t[hd][^>]*>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g,' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')
+      .replace(/\t[ \t]+/g,'\t').replace(/[ ]{3,}/g,' ')
+      .replace(/\n{3,}/g,'\n\n').trim();
+    rawText += c + '\n\n';
+  }
+  const MAX_FRONT = mode === 'expert' ? 18000 : 14000;
+  const MAX_BACK  = mode === 'expert' ?  8000 :  6000;
+  if (rawText.length > MAX_FRONT + MAX_BACK) {
+    return rawText.slice(0, MAX_FRONT) + '\n\n[... 중략 ...]\n\n' + rawText.slice(rawText.length - MAX_BACK);
+  }
+  return rawText;
+}
+
+// ─────────────────────────────────────────────────────────
+// 3-B. AI 요약 스트리밍  GET /api/summarize-stream
+//      SSE(text/event-stream)로 Gemini 청크를 실시간 전송
+//      이벤트: progress | chunk | done | cached | error
+// ─────────────────────────────────────────────────────────
+app.get('/api/summarize-stream', async (req, res) => {
+  const rcptNo   = (req.query.rcptNo   || '').trim();
+  const mode     = (req.query.mode     || 'general').trim();
+  const corpName = (req.query.corpName || '이 기업').trim();
+  const year     = (req.query.year     || '').trim();
+  const term     = (req.query.term     || '').trim();
+
+  if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
+
+  // SSE 헤더
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+
+  const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
+
+  // ── ① 캐시 확인 ──────────────────────────────────────────
+  const cacheKey = `${rcptNo}_${mode}`;
+  const cached   = getFromCache(cacheKey);
+  if (cached) {
+    console.log(`[stream] 캐시 히트: ${cacheKey}`);
+    send({ type: 'cached', data: cached });
+    return res.end();
+  }
+
+  // ── ② DART 문서 다운로드 ─────────────────────────────────
+  send({ type: 'progress', msg: '📥 DART 문서 다운로드 중...' });
+  let docText = '';
+  try {
+    docText = await fetchDartDocText(rcptNo, mode);
+    if (!docText.trim()) {
+      send({ type: 'error', msg: '텍스트 추출 실패' });
+      return res.end();
+    }
+    send({ type: 'progress', msg: '🤖 AI가 분석하고 있어요...' });
+  } catch (err) {
+    send({ type: 'error', msg: 'DART 문서 다운로드 실패: ' + err.message });
+    return res.end();
+  }
+
+  // ── ③ Gemini 스트리밍 호출 ───────────────────────────────
+  const modelName = GEMINI_MODELS[mode] || GEMINI_MODELS.general;
+  const temp      = GEMINI_TEMP[mode]   || 0.2;
+  const userMsg   = `다음 사업보고서를 분석하여 ${mode === 'expert' ? '전문가용 HTML' : '일반인용 JSON'} 리포트를 작성해주세요.\n\n[회사명]: ${corpName}\n[기준 사업연도]: ${year || '최근 사업연도'} (${term || ''})\n\n[사업보고서 원문]:\n${docText}`;
+
+  try {
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({
+      model            : modelName,
+      systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : SYSTEM_GENERAL,
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
+    });
+
+    const streamResult = await withRetry(() => model.generateContentStream(userMsg));
+    let fullText = '';
+
+    for await (const chunk of streamResult.stream) {
+      const text = chunk.text();
+      if (text) {
+        fullText += text;
+        send({ type: 'chunk', text });
+      }
+    }
+
+    // JSON 앞뒤 코드블록 제거 (일반인용)
+    const cleanedOutput = mode === 'general'
+      ? fullText.replace(/^```json\s*/i, '').replace(/\s*```$/, '').trim()
+      : fullText;
+
+    saveToCache(cacheKey, cleanedOutput, { corpName, mode });
+    send({ type: 'done', data: cleanedOutput });
+    console.log(`[stream] ✅ 완료: ${cacheKey}`);
+    res.end();
+
+  } catch (err) {
+    console.error('[stream] 오류:', err.message);
+    send({ type: 'error', msg: 'AI 요약 오류: ' + err.message });
+    res.end();
+  }
+});
+
+// ─────────────────────────────────────────────────────────
 // 4. 보고서 없는 기업 — Gemini 일반지식 요약
 //    DART 문서 없이 회사명만으로 간단 요약 생성
 // ─────────────────────────────────────────────────────────

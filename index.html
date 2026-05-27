@@ -435,6 +435,8 @@
 
   /* ── DART 실시간 섹션 ── */
   @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .stream-cursor { display:inline-block; animation:blink .8s step-end infinite; color:var(--accent); }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
 
   .disclosure-card {
     border: 1px solid var(--line);
@@ -2135,6 +2137,55 @@ function renderDisclosureList(list) {
 }
 
 /* ─────────────────────────────────────────────
+   스트리밍 SSE 헬퍼
+   ─────────────────────────────────────────────*/
+
+/* 로딩 메시지 동적 업데이트 */
+function setStreamLoadingMsg(msg) {
+  const el = document.getElementById('dd-loading');
+  if (!el) return;
+  el.innerHTML = `
+    <div style="font-size:40px; animation:spin 1.2s linear infinite; display:inline-block;">⏳</div>
+    <div style="font-size:17px; font-weight:600; margin-top:16px; color:var(--ink);">${msg}</div>
+    <div style="font-size:14px; color:var(--ink-soft); margin-top:8px;">잠시만 기다려 주세요</div>`;
+}
+
+/* SSE 스트림 수신 — onProgress/onChunk/onDone/onError 콜백 */
+function callStreamAPI(url, { onProgress, onChunk, onDone, onError }) {
+  const controller = new AbortController();
+  (async () => {
+    try {
+      const res = await fetch(url, { signal: controller.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop(); // 불완전한 마지막 줄은 버퍼에 유지
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          try {
+            const ev = JSON.parse(part.slice(6));
+            if      (ev.type === 'chunk')    { onChunk    && onChunk(ev.text); }
+            else if (ev.type === 'done')     { onDone     && onDone(ev.data, false); return; }
+            else if (ev.type === 'cached')   { onDone     && onDone(ev.data, true);  return; }
+            else if (ev.type === 'progress') { onProgress && onProgress(ev.msg); }
+            else if (ev.type === 'error')    { onError    && onError(ev.msg);  return; }
+          } catch(_) {}
+        }
+      }
+    } catch(e) {
+      if (e.name !== 'AbortError') onError && onError(e.message);
+    }
+  })();
+  return controller; // 필요 시 controller.abort()로 취소 가능
+}
+
+/* ─────────────────────────────────────────────
    3. 공시 클릭 → AI 요약 화면
    ─────────────────────────────────────────────*/
 /* 현재 요약 상태 */
@@ -2174,35 +2225,32 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
 
   document.getElementById("dd-loading").style.display = "block";
   document.getElementById("dd-summary").style.display  = "none";
+  setStreamLoadingMsg('AI가 공시를 분석하는 중...');
 
-  try {
-    const corpName = dartState.currentCompany?.corpName || '';
-    const res  = await fetchWithTimeout(`/api/summarize?rcptNo=${rcptNo}&mode=general&corpName=${encodeURIComponent(corpName)}`, 90000);
-    const data = await res.json();
+  const corpName  = dartState.currentCompany?.corpName || '';
+  const streamUrl = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=general&corpName=${encodeURIComponent(corpName)}`;
 
-    if (data.error) {
-      const e = new Error(data.error);
-      e.detail = data.detail || '';
-      throw e;
-    }
-
-    cacheReport(rcptNo, 'general', data.data);
-    renderGeneralReport(data.data, rcptNo, title);
-    if (!alreadySeen) markViewed(rcptNo);
-
-  } catch(err) {
-    // ZIP 오류 등 문서 문제 → 다음 후보 자동 재시도
-    if (_candidates.length > 0) {
-      console.warn('[loadSummary] 실패, 다음 후보 시도:', _candidates[0].report_nm, err.message);
-      loadSummary(_candidates[0].rcept_no, _candidates[0].report_nm, _candidates[0].rcept_dt, _candidates[0].flr_nm, _candidates.slice(1));
-      return;
-    }
-    document.getElementById("dd-loading").style.display = "none";
-    document.getElementById("dd-summary").style.display  = "block";
-    const detail = err.detail ? '<br><small style="color:#999;">상세: ' + err.detail + '</small>' : '';
-    document.getElementById("dd-summary").innerHTML =
-      errBox('😢 요약 실패: ' + err.message + detail + '<br><small>문제가 계속되면 /api/status 를 확인해 주세요.</small>');
-  }
+  callStreamAPI(streamUrl, {
+    onProgress: (msg) => setStreamLoadingMsg(msg),
+    onChunk: () => {},  // 일반인용은 JSON 완성 후 렌더 — 청크는 버퍼링만
+    onDone: (data) => {
+      cacheReport(rcptNo, 'general', data);
+      renderGeneralReport(data, rcptNo, title);
+      if (!alreadySeen) markViewed(rcptNo);
+    },
+    onError: (msg) => {
+      // ZIP 오류 등 → 다음 후보 자동 재시도
+      if (_candidates.length > 0) {
+        console.warn('[loadSummary stream] 실패, 다음 후보 시도:', _candidates[0].report_nm, msg);
+        loadSummary(_candidates[0].rcept_no, _candidates[0].report_nm, _candidates[0].rcept_dt, _candidates[0].flr_nm, _candidates.slice(1));
+        return;
+      }
+      document.getElementById("dd-loading").style.display = "none";
+      document.getElementById("dd-summary").style.display  = "block";
+      document.getElementById("dd-summary").innerHTML =
+        errBox('😢 요약 실패: ' + msg + '<br><small>문제가 계속되면 /api/status 를 확인해 주세요.</small>');
+    },
+  });
 }
 
 /* ─────────────────────────────────────────────
@@ -2299,6 +2347,7 @@ function renderGeneralReport(rawJson, rcptNo, title) {
 async function loadExpertSummary(rcptNo, title) {
   document.getElementById("dd-loading").style.display = "block";
   document.getElementById("dd-summary").style.display  = "none";
+  setStreamLoadingMsg('📊 전문가용 리포트 준비 중...');
 
   const cached = getCached(rcptNo, 'expert');
   if (cached) {
@@ -2307,24 +2356,42 @@ async function loadExpertSummary(rcptNo, title) {
     document.getElementById("dd-summary").innerHTML = cached + disclaimerHtml(rcptNo);
     return;
   }
-  try {
-    const corpName = dartState.currentCompany?.corpName || '';
-    const res  = await fetchWithTimeout(`/api/summarize?rcptNo=${rcptNo}&mode=expert&corpName=${encodeURIComponent(corpName)}`, 90000);
-    const data = await res.json();
-    if (data.error) {
-      const e = new Error(data.error);
-      e.detail = data.detail || '';
-      throw e;
-    }
-    cacheReport(rcptNo, 'expert', data.data);
-    document.getElementById("dd-loading").style.display = "none";
-    document.getElementById("dd-summary").style.display  = "block";
-    document.getElementById("dd-summary").innerHTML = data.data + disclaimerHtml(rcptNo);
-  } catch(err) {
-    document.getElementById("dd-loading").style.display = "none";
-    document.getElementById("dd-summary").style.display  = "block";
-    document.getElementById("dd-summary").innerHTML = errBox('전문가용 로드 실패: ' + err.message);
-  }
+
+  const corpName  = dartState.currentCompany?.corpName || '';
+  const streamUrl = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=expert&corpName=${encodeURIComponent(corpName)}`;
+  const summaryEl = document.getElementById("dd-summary");
+  let accumulated = '';
+  let updateTimer = null;
+
+  callStreamAPI(streamUrl, {
+    onProgress: (msg) => setStreamLoadingMsg(msg),
+    onChunk: (text) => {
+      accumulated += text;
+      // 첫 청크 도착 — 로딩 숨기고 결과 div 바로 표시
+      if (accumulated.length === text.length) {
+        document.getElementById("dd-loading").style.display = "none";
+        summaryEl.style.display = "block";
+        summaryEl.innerHTML = '';
+        // 250ms마다 DOM 업데이트 (깜빡임 최소화)
+        updateTimer = setInterval(() => {
+          summaryEl.innerHTML = accumulated + '<span class="stream-cursor">▋</span>';
+        }, 250);
+      }
+    },
+    onDone: (data) => {
+      if (updateTimer) clearInterval(updateTimer);
+      cacheReport(rcptNo, 'expert', data);
+      document.getElementById("dd-loading").style.display = "none";
+      summaryEl.style.display = "block";
+      summaryEl.innerHTML = data + disclaimerHtml(rcptNo);
+    },
+    onError: (msg) => {
+      if (updateTimer) clearInterval(updateTimer);
+      document.getElementById("dd-loading").style.display = "none";
+      summaryEl.style.display = "block";
+      summaryEl.innerHTML = errBox('전문가용 로드 실패: ' + msg);
+    },
+  });
 }
 
 /* ── 일반인/전문가 탭 버튼 ── */
