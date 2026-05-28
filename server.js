@@ -213,8 +213,10 @@ const SYSTEM_GENERAL = `당신은 '공시한장' 서비스의 리포트 작성 A
 
 [재무 수치 작성 규칙 — 매우 중요]
 - 원문에서 실제 숫자를 반드시 찾아 기재하십시오.
+- 매출액 = 건설계약수익, 건설수익, 도급수익, 영업수익, 제품매출, 상품매출 모두 해당. 어떤 명칭이든 매출 최상위 항목을 찾으십시오.
+- 재무제표(손익계산서), 요약 재무정보, 사업 실적 등 원문 어느 곳에서든 수치를 찾으십시오.
 - 단위는 '조', '억'으로 변환하십시오. 예: 6,234,567백만원 → 6.2조원 / 234,567백만원 → 2,345억원
-- 숫자를 찾지 못한 경우에만 "확인불가"로 쓰십시오.
+- "확인불가"는 원문 전체를 검토해도 해당 수치가 전혀 없을 때만 사용하십시오.
 - 절대로 XX, XXX, X.X 같은 자리표시자를 출력에 사용하지 마십시오.
 
 [출력 형식 — 반드시 아래 HTML 구조 그대로 출력. JSON 금지.]
@@ -317,7 +319,7 @@ function yyyymmdd(date) { return date.toISOString().slice(0,10).replace(/-/g,'')
 // ─────────────────────────────────────────────────────────
 // Gemini 503 재시도 헬퍼 (고수요 시 자동 재시도)
 // ─────────────────────────────────────────────────────────
-async function withRetry(fn, maxRetries = 5, baseDelayMs = 3000, onRetry) {
+async function withRetry(fn, maxRetries = 4, baseDelayMs = 2000, onRetry) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
       return await fn();
@@ -722,9 +724,9 @@ ${docText}`;
 function extractKeyFinancials(rawText) {
   // 찾을 재무 지표 (우선순위 순)
   const TARGETS = [
-    { key: '매출액',    keywords: ['매출액', '영업수익', '순매출액'] },
-    { key: '영업이익',  keywords: ['영업이익', '영업손익', '영업이익(손실)', '영업손실'] },
-    { key: '당기순이익', keywords: ['당기순이익', '당기순손익', '당기순이익(손실)', '분기순이익', '반기순이익'] },
+    { key: '매출액',    keywords: ['매출액', '영업수익', '순매출액', '건설계약수익', '건설수익', '도급수익', '수주매출', '제품매출', '상품매출', '매출 합계', '수익 합계', '총수익'] },
+    { key: '영업이익',  keywords: ['영업이익', '영업손익', '영업이익(손실)', '영업손실', '영업이익(손실)'] },
+    { key: '당기순이익', keywords: ['당기순이익', '당기순손익', '당기순이익(손실)', '분기순이익', '반기순이익', '당기순손실', '지배기업 소유주 지분'] },
     { key: '영업이익률', keywords: ['영업이익률'] },
     { key: '자산총계',  keywords: ['자산총계', '자산 합계'] },
     { key: '부채총계',  keywords: ['부채총계', '부채 합계'] },
@@ -835,7 +837,7 @@ async function fetchDartDocText(rcptNo, mode) {
     .replace(/\n{3,}/g, '\n\n');
 
   const MAX_FRONT = mode === 'expert' ? 16000 : 12000;
-  const MAX_BACK  = mode === 'expert' ?  6000 :  4000;
+  const MAX_BACK  = mode === 'expert' ?  9000 :  6000;
   let docBody;
   if (compressed.length > MAX_FRONT + MAX_BACK) {
     docBody = compressed.slice(0, MAX_FRONT) + '\n\n[... 중략 ...]\n\n' + compressed.slice(compressed.length - MAX_BACK);

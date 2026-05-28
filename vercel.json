@@ -3,7 +3,7 @@
   "regions": ["icn1"],
   "builds": [
     { "src": "index.html", "use": "@vercel/static" },
-    { "src": "server.js",  "use": "@vercel/node", "config": { "maxDuration": 60 } }
+    { "src": "server.js",  "use": "@vercel/node", "config": { "maxDuration": 300 } }
   ],
   "routes": [
     { "src": "/api/(.*)", "dest": "server.js" },

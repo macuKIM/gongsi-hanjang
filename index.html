@@ -2343,11 +2343,11 @@ function callStreamAPI(url, { onProgress, onChunk, onDone, onError }) {
     fn && fn(...args);
   };
 
-  // 60초 안에 완료 안 되면 강제 오류 처리
+  // 120초 안에 완료 안 되면 강제 오류 처리
   const timeoutId = setTimeout(() => {
     controller.abort();
-    finish(onError, '60초가 지나도 응답이 없어요. 잠시 후 다시 시도해 주세요.');
-  }, 60000);
+    finish(onError, '시간이 너무 오래 걸려요. 잠시 후 다시 시도해 주세요.');
+  }, 120000);
 
   (async () => {
     try {
