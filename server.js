@@ -529,8 +529,9 @@ app.get('/api/companies', async (req, res) => {
 // 1. 회사명 검색  GET /api/search?name=삼성전자
 // ─────────────────────────────────────────────────────────
 app.get('/api/search', async (req, res) => {
-  const name     = (req.query.name     || '').trim();
-  const corpCode = (req.query.corpCode || '').trim();  // corp_code 있으면 우선 사용
+  const name      = (req.query.name       || '').trim();
+  const corpCode  = (req.query.corpCode   || '').trim();  // corp_code 있으면 우선 사용
+  const pageCount = parseInt(req.query.page_count || '100', 10);
   if (!name && !corpCode) return res.status(400).json({ error: '검색어를 입력해 주세요.' });
 
   if (!DART_API_KEY) return res.status(500).json({ error: 'DART_API_KEY가 설정되지 않았습니다.' });

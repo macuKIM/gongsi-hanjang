@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(/Users/chanjung/Library/*)",
+      "Read(/Users/chanjung/Documents/*)",
+      "Read(/Users/chanjung/Downloads/*)",
+      "Read(/Users/chanjung/Desktop/클로드/.claude/*)",
+      "Read(/Users/chanjung/.ssh/*)",
+      "Edit(/Users/chanjung/Library/*)",
+      "Edit(/Users/chanjung/Documents/*)",
+      "Edit(/Users/chanjung/Downloads/*)",
+      "Edit(/Users/chanjung/.ssh/*)",
+      "Write(/Users/chanjung/Library/*)",
+      "Write(/Users/chanjung/Documents/*)",
+      "Write(/Users/chanjung/Downloads/*)",
+      "Write(/Users/chanjung/.ssh/*)"
+    ]
+  }
+}
