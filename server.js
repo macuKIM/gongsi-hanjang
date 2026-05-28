@@ -601,7 +601,7 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v3`;
+  const cacheKey = `${rcptNo}_${mode}_v4`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
@@ -712,36 +712,82 @@ ${docText}`;
 // 헬퍼: 재무제표에서 핵심 수치 행만 미리 추출
 //  압축 후에도 Gemini가 실제 숫자를 정확히 쓸 수 있도록
 //  주요 재무 지표 행을 문서 앞부분에 따로 주입
+//
+//  DART 문서 구조 특성:
+//    "Ⅱ. 영업수익(매출액)" — 키워드 행에 숫자 없음
+//    "합계   3,500,000   3,200,000" — 숫자는 이후 행에 있음
+//  → 키워드 발견 후 최대 8행 안에서 숫자 행 탐색
 // ─────────────────────────────────────────────────────────
 function extractKeyFinancials(rawText) {
-  const TARGET = ['매출액', '영업이익', '영업이익률', '당기순이익', '당기순손익',
-                  '자산총계', '부채총계', '자본총계'];
-  const YEAR_RE = /제\s*\d+\s*기/;
+  // 찾을 재무 지표 (우선순위 순)
+  const TARGETS = [
+    { key: '매출액',    keywords: ['매출액', '영업수익', '순매출액'] },
+    { key: '영업이익',  keywords: ['영업이익', '영업손익', '영업이익(손실)', '영업손실'] },
+    { key: '당기순이익', keywords: ['당기순이익', '당기순손익', '당기순이익(손실)', '분기순이익', '반기순이익'] },
+    { key: '영업이익률', keywords: ['영업이익률'] },
+    { key: '자산총계',  keywords: ['자산총계', '자산 합계'] },
+    { key: '부채총계',  keywords: ['부채총계', '부채 합계'] },
+    { key: '자본총계',  keywords: ['자본총계', '자본 합계'] },
+  ];
+  const YEAR_RE   = /제\s*\d+\s*기/;
+  const NUM_RE    = /^[\-\(]?[\d][\d,\.]*[\)]?$/; // 숫자셀 판별
 
-  const lines  = rawText.split('\n');
-  const result = [];
+  // 숫자 셀이 2개 이상인지 확인
+  function getNumCells(line) {
+    return line.split('\t').map(s => s.trim())
+      .filter(s => NUM_RE.test(s) && s.replace(/[\-\(\),\.]/g, '').length >= 2);
+  }
+
+  const lines      = rawText.split('\n');
+  const found      = {};   // key → "label\t숫자\t숫자\t..."
   let   headerLine = '';
 
-  for (const line of lines) {
-    // 연도 헤더 (예: "구분\t제25기\t제24기\t제23기") — 첫 번째만 채택
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    // 연도 헤더 탐지 (예: "구분\t제53기\t제52기\t제51기")
     if (YEAR_RE.test(line) && line.includes('\t') && !headerLine) {
-      headerLine = line.trim();
+      const cells = line.split('\t').map(s => s.trim()).filter(Boolean);
+      if (cells.length >= 3) { headerLine = line.trim(); }
       continue;
     }
-    for (const kw of TARGET) {
-      if (line.includes(kw)) {
-        const cells    = line.split('\t').map(s => s.trim());
-        const numCells = cells.filter(s => /^[\d,\.\-\(\)%]+$/.test(s) && s.length > 2);
-        if (numCells.length >= 2) result.push(line.trim());
+
+    for (const { key, keywords } of TARGETS) {
+      if (found[key]) continue;
+
+      for (const kw of keywords) {
+        if (!line.includes(kw)) continue;
+
+        // ① 같은 줄에 숫자가 있으면 바로 채택
+        const sameLine = getNumCells(line);
+        if (sameLine.length >= 2) {
+          found[key] = line.trim();
+          break;
+        }
+
+        // ② 키워드 행에 숫자 없으면 이후 최대 8행 안에서 탐색
+        //    숫자 행 중 마지막 것이 합계일 가능성이 높음
+        let bestLine = '';
+        for (let j = i + 1; j < Math.min(i + 9, lines.length); j++) {
+          const nc = getNumCells(lines[j]);
+          if (nc.length >= 2) bestLine = lines[j].trim();
+          // 다른 키워드가 나오면 탐색 중단
+          if (j > i + 1 && TARGETS.some(t => t.keywords.some(k => lines[j].includes(k)))) break;
+        }
+        if (bestLine) found[key] = `${kw}\t${bestLine.replace(/^[^\t]*\t/, '')}`;
         break;
       }
     }
-    if (result.length >= 12) break; // 충분히 모았으면 스캔 중단
+
+    // 주요 4개 지표 확보되면 조기 종료
+    if (found['매출액'] && found['영업이익'] && found['당기순이익']) break;
   }
 
-  if (result.length === 0) return '';
-  const hdr = headerLine ? headerLine + '\n' : '';
-  return `[★ 핵심 재무 수치 — 아래 실제 숫자를 반드시 요약에 사용하세요. XX·XXX 플레이스홀더 절대 금지 ★]\n${hdr}${result.join('\n')}\n`;
+  if (Object.keys(found).length === 0) return '';
+
+  const hdr   = headerLine ? headerLine + '\n' : '';
+  const rows  = Object.values(found).join('\n');
+  return `[★ 핵심 재무 수치 — 아래 실제 숫자를 반드시 요약에 사용하세요. XX·XXX 플레이스홀더 절대 금지 ★]\n${hdr}${rows}\n`;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -824,7 +870,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v3`;
+  const cacheKey = `${rcptNo}_${mode}_v4`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
