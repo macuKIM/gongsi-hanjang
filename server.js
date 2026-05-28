@@ -211,6 +211,12 @@ const SYSTEM_GENERAL = `당신은 '공시한장' 서비스의 리포트 작성 A
 <div class='fin-divider'> / <div class='note'> /
 <div class='verdict'> / <div class='vlbl'>
 
+[재무 수치 작성 규칙 — 매우 중요]
+- 원문에서 실제 숫자를 반드시 찾아 기재하십시오.
+- 단위는 '조', '억'으로 변환하십시오. 예: 6,234,567백만원 → 6.2조원 / 234,567백만원 → 2,345억원
+- 숫자를 찾지 못한 경우에만 "확인불가"로 쓰십시오.
+- 절대로 XX, XXX, X.X 같은 자리표시자를 출력에 사용하지 마십시오.
+
 [출력 형식 — 반드시 아래 HTML 구조 그대로 출력. JSON 금지.]
 <div class="report fade">
   <div class="rkick">AI 요약 · 일반인용 · Gemini 분석 · DART 공시 기반</div>
@@ -226,12 +232,12 @@ const SYSTEM_GENERAL = `당신은 '공시한장' 서비스의 리포트 작성 A
   <div class="fin-divider">
     <h4>주요 재무 지표</h4>
     <table class="ftable">
-      <thead><tr><th>구분</th><th>20XX(제XX기)</th><th>20XX(제XX기)</th><th>20XX(제XX기)</th></tr></thead>
+      <thead><tr><th>구분</th><th>[실제연도(제N기)]</th><th>[실제연도(제N기)]</th><th>[실제연도(제N기)]</th></tr></thead>
       <tbody>
-        <tr><td>매출액</td><td>XXX조</td><td>XXX조</td><td>XXX조</td></tr>
-        <tr><td>영업이익</td><td>XX조</td><td>XX조</td><td>XX조</td></tr>
-        <tr><td>영업이익률</td><td>X.X%</td><td>X.X%</td><td>X.X%</td></tr>
-        <tr><td>당기순이익</td><td>XX조</td><td>XX조</td><td>XX조</td></tr>
+        <tr><td>매출액</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
+        <tr><td>영업이익</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
+        <tr><td>영업이익률</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
+        <tr><td>당기순이익</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
       </tbody>
     </table>
     <h4>핵심 주석</h4>
@@ -595,7 +601,7 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}`;
+  const cacheKey = `${rcptNo}_${mode}_v3`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
@@ -676,7 +682,7 @@ app.get('/api/summarize', async (req, res) => {
       safetySettings   : GEMINI_SAFETY,
     });
 
-    const userMsg = `다음 사업보고서를 분석하여 ${mode === 'expert' ? '전문가용 HTML' : '일반인용 JSON'} 리포트를 작성해주세요.
+    const userMsg = `다음 사업보고서를 분석하여 ${mode === 'expert' ? '전문가용 HTML' : '일반인용 HTML'} 리포트를 작성해주세요.
 
 [회사명]: ${corpName}
 [기준 사업연도]: ${year || '최근 사업연도'} (${term || ''})
@@ -818,7 +824,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}`;
+  const cacheKey = `${rcptNo}_${mode}_v3`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
@@ -844,7 +850,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   // ── ③ Gemini 스트리밍 호출 ───────────────────────────────
   const modelName = GEMINI_MODELS[mode] || GEMINI_MODELS.general;
   const temp      = GEMINI_TEMP[mode]   || 0.2;
-  const userMsg   = `다음 사업보고서를 분석하여 ${mode === 'expert' ? '전문가용 HTML' : '일반인용 JSON'} 리포트를 작성해주세요.\n\n[회사명]: ${corpName}\n[기준 사업연도]: ${year || '최근 사업연도'} (${term || ''})\n\n[사업보고서 원문]:\n${docText}`;
+  const userMsg   = `다음 사업보고서를 분석하여 ${mode === 'expert' ? '전문가용 HTML' : '일반인용 HTML'} 리포트를 작성해주세요.\n\n[회사명]: ${corpName}\n[기준 사업연도]: ${year || '최근 사업연도'} (${term || ''})\n\n[사업보고서 원문]:\n${docText}`;
 
   try {
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
