@@ -768,16 +768,21 @@ function extractKeyFinancials(rawText) {
           break;
         }
 
-        // ② 키워드 행에 숫자 없으면 이후 최대 8행 안에서 탐색
-        //    숫자 행 중 마지막 것이 합계일 가능성이 높음
+        // ② 키워드 행에 숫자 없으면 이후 최대 25행 안에서 탐색
+        //    숫자 셀이 가장 많은 행을 합계 행으로 채택
         let bestLine = '';
-        for (let j = i + 1; j < Math.min(i + 9, lines.length); j++) {
+        let bestNumCount = 0;
+        // 중단 기준: 다른 '상위' 재무 지표(매출액/영업이익/당기순이익/자산총계 등)가 나올 때만
+        const STOP_KWS = ['영업이익', '당기순이익', '매출총이익', '자산총계', '매출원가'];
+        for (let j = i + 1; j < Math.min(i + 26, lines.length); j++) {
           const nc = getNumCells(lines[j]);
-          if (nc.length >= 2) bestLine = lines[j].trim();
-          // 다른 키워드가 나오면 탐색 중단
-          if (j > i + 1 && TARGETS.some(t => t.keywords.some(k => lines[j].includes(k)))) break;
+          if (nc.length >= 2 && nc.length > bestNumCount) {
+            bestLine = lines[j].trim();
+            bestNumCount = nc.length;
+          }
+          if (j > i + 3 && STOP_KWS.some(k => lines[j].includes(k))) break;
         }
-        if (bestLine) found[key] = `${kw}\t${bestLine.replace(/^[^\t]*\t/, '')}`;
+        if (bestLine && bestNumCount >= 2) found[key] = `${kw}\t${bestLine.replace(/^[^\t]*\t/, '')}`;
         break;
       }
     }
@@ -799,7 +804,7 @@ function extractKeyFinancials(rawText) {
 async function fetchDartDocText(rcptNo, mode) {
   const docRes = await axios.get('https://opendart.fss.or.kr/api/document.xml', {
     params: { crtfc_key: DART_API_KEY, rcept_no: rcptNo },
-    responseType: 'arraybuffer', timeout: 30000,
+    responseType: 'arraybuffer', timeout: 20000,
   });
   const docBuf = Buffer.from(docRes.data);
   if (docBuf.length < 4 || docBuf[0] !== 0x50 || docBuf[1] !== 0x4B) {
@@ -906,7 +911,7 @@ app.get('/api/summarize-stream', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 6000 : 4500 },
       safetySettings   : GEMINI_SAFETY,
     });
 
