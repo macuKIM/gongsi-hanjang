@@ -1927,7 +1927,6 @@ const POPULAR_CORPS = [
   {corp_name:'포스코퓨처엠',      stock_code:'003670'},
   {corp_name:'포스코인터내셔널',  stock_code:'047050'},
   {corp_name:'고려아연',          stock_code:'010130'},
-  {corp_name:'현대제철',          stock_code:'004020'},
   {corp_name:'동국제강',          stock_code:'001230'},
   {corp_name:'풍산',              stock_code:'103140'},
   // ── 배터리·소재 ──
@@ -2407,6 +2406,11 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
   _currentRcptNo = rcptNo;
   _currentTitle  = title;
   _summaryMode   = 'general';
+  // 탭 UI를 반드시 일반인용으로 리셋 (이전 기업에서 전문가용 선택 시 잔류 방지)
+  const _tg = document.getElementById('ddTab_g');
+  const _te = document.getElementById('ddTab_e');
+  if (_tg) _tg.classList.add('on');
+  if (_te) _te.classList.remove('on');
 
   show("disclosure-detail");
   const dt = date || '';

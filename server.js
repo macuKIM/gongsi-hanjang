@@ -911,14 +911,14 @@ app.get('/api/summarize-stream', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 6000 : 4500 },
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 6000 : 6000 },
       safetySettings   : GEMINI_SAFETY,
     });
 
     const streamResult = await withRetry(
       () => model.generateContentStream(userMsg),
       5, 3000,
-      (attempt, max) => send({ type: 'progress', msg: `⏳ Gemini 서버가 바빠서 재시도 중... (${attempt}/${max})` })
+      (attempt, max) => send({ type: 'progress', msg: `🤖 AI가 열심히 분석하고 있어요... (${attempt}/${max})` })
     );
     let fullText = '';
     let blockedChunks = 0;
