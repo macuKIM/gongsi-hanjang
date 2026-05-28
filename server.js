@@ -604,7 +604,7 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v4`;
+  const cacheKey = `${rcptNo}_${mode}_v5`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
@@ -831,9 +831,9 @@ async function fetchDartDocText(rcptNo, mode) {
   // ① 핵심 재무 수치 미리 추출 (압축 전 — Gemini가 정확한 숫자를 쓰도록)
   const keyFinancials = extractKeyFinancials(rawText);
 
-  // ② RECITATION 방지 압축 (탭 구분 숫자 6개↑ 연속만 압축 → 3~4개년 비교표는 살아남음)
+  // ② RECITATION 방지 압축 (탭 구분 숫자 9개↑ 연속만 압축 → 연결+별도 각 3년치=6개도 살아남음)
   const compressed = rawText
-    .replace(/(\t[\d,\.\-\(\)]+){6,}/g, '\t[재무수치 생략]')
+    .replace(/(\t[\d,\.\-\(\)]+){9,}/g, '\t[재무수치 생략]')
     .replace(/\n{3,}/g, '\n\n');
 
   const MAX_FRONT = mode === 'expert' ? 16000 : 12000;
@@ -873,7 +873,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v4`;
+  const cacheKey = `${rcptNo}_${mode}_v5`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
