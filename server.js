@@ -604,7 +604,7 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v5`;
+  const cacheKey = `${rcptNo}_${mode}_v6`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
@@ -836,6 +836,20 @@ async function fetchDartDocText(rcptNo, mode) {
   // ① 핵심 재무 수치 미리 추출 (압축 전 — Gemini가 정확한 숫자를 쓰도록)
   const keyFinancials = extractKeyFinancials(rawText);
 
+  // ① - B 손익계산서 섹션 직접 추출 (중략 구간에 있어도 반드시 Gemini에 전달)
+  //   '포괄손익계산서' 또는 '손익계산서' 키워드의 두 번째 등장 위치부터 5000자 추출
+  //   (첫 번째는 목차에 언급, 두 번째가 실제 재무제표 본문)
+  let incomeSection = '';
+  const IS_KEYWORDS = ['포괄손익계산서', '손익계산서', '영업수익\t', '매출액\t'];
+  for (const kw of IS_KEYWORDS) {
+    const idx1 = rawText.indexOf(kw);
+    if (idx1 < 0) continue;
+    const idx2 = rawText.indexOf(kw, idx1 + kw.length + 10);
+    const startIdx = idx2 >= 0 ? idx2 : idx1;
+    incomeSection = rawText.slice(Math.max(0, startIdx - 300), Math.min(rawText.length, startIdx + 5000));
+    if (incomeSection.length > 200) break;
+  }
+
   // ② RECITATION 방지 압축 (탭 구분 숫자 9개↑ 연속만 압축 → 연결+별도 각 3년치=6개도 살아남음)
   const compressed = rawText
     .replace(/(\t[\d,\.\-\(\)]+){9,}/g, '\t[재무수치 생략]')
@@ -850,8 +864,14 @@ async function fetchDartDocText(rcptNo, mode) {
     docBody = compressed;
   }
 
-  // ③ 핵심 재무 수치를 문서 앞에 주입 (중략돼도 핵심 숫자는 항상 Gemini에게 전달)
-  return keyFinancials ? keyFinancials + '\n\n' + docBody : docBody;
+  // ③ 핵심 재무 수치 + 손익계산서 섹션을 문서 앞에 주입
+  //   손익계산서 섹션이 이미 docBody에 포함된 경우 중복 주입 방지
+  let preamble = '';
+  if (keyFinancials) preamble += keyFinancials + '\n\n';
+  if (incomeSection && !docBody.includes(incomeSection.slice(50, 150))) {
+    preamble += '[손익계산서 발췌 — 재무수치 확인용]\n' + incomeSection + '\n\n';
+  }
+  return preamble + docBody;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -878,7 +898,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v5`;
+  const cacheKey = `${rcptNo}_${mode}_v6`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
