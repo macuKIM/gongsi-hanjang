@@ -604,7 +604,7 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v6`;
+  const cacheKey = `${rcptNo}_${mode}_v7`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
@@ -812,9 +812,20 @@ async function fetchDartDocText(rcptNo, mode) {
     throw new Error('ZIP 형식 아님 — DART가 오류 페이지를 반환했을 수 있어요: ' + preview);
   }
   const zip = new AdmZip(docBuf);
-  let rawText = '';
-  for (const entry of zip.getEntries()) {
-    if (entry.isDirectory) continue;
+
+  // ★ 재무제표 관련 파일을 먼저 처리 (파일명에 '재무', 'IX', 'financial' 포함)
+  //   → rawText 앞부분에 재무제표 내용이 오도록 보장
+  const allEntries = zip.getEntries().filter(e => !e.isDirectory);
+  const financialEntries = allEntries.filter(e =>
+    /재무|financial|IX[-_\d]|[Ii][Xx][-_]/i.test(e.entryName)
+  );
+  const otherEntries = allEntries.filter(e =>
+    !/재무|financial|IX[-_\d]|[Ii][Xx][-_]/i.test(e.entryName)
+  );
+  const sortedEntries = [...financialEntries, ...otherEntries];
+  console.log(`[fetchDartDocText] ZIP 파일 ${allEntries.length}개 (재무제표 파일: ${financialEntries.map(e=>e.entryName).join(', ') || '없음'})`);
+
+  function entryToText(entry) {
     const buf = entry.getData();
     let content;
     try {
@@ -831,22 +842,33 @@ async function fetchDartDocText(rcptNo, mode) {
       .replace(/&nbsp;/g,' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&')
       .replace(/\t[ \t]+/g,'\t').replace(/[ ]{3,}/g,' ')
       .replace(/\n{3,}/g,'\n\n').trim();
-    rawText += c + '\n\n';
+    return c;
+  }
+
+  let rawText = '';
+  for (const entry of sortedEntries) {
+    rawText += entryToText(entry) + '\n\n';
   }
   // ① 핵심 재무 수치 미리 추출 (압축 전 — Gemini가 정확한 숫자를 쓰도록)
   const keyFinancials = extractKeyFinancials(rawText);
 
   // ① - B 손익계산서 섹션 직접 추출 (중략 구간에 있어도 반드시 Gemini에 전달)
-  //   '포괄손익계산서' 또는 '손익계산서' 키워드의 두 번째 등장 위치부터 5000자 추출
-  //   (첫 번째는 목차에 언급, 두 번째가 실제 재무제표 본문)
+  //   키워드의 두 번째 등장 위치부터 10000자 추출
+  //   (첫 번째는 목차 언급, 두 번째가 실제 재무제표 본문)
+  //   건설업: '건설계약수익', '건설수익' 추가
   let incomeSection = '';
-  const IS_KEYWORDS = ['포괄손익계산서', '손익계산서', '영업수익\t', '매출액\t'];
+  const IS_KEYWORDS = [
+    '포괄손익계산서', '손익계산서',
+    '건설계약수익', '건설수익', '도급수익',  // 건설업 특수 용어
+    '영업수익\t', '매출액\t',
+    '영업수익 ', '매출액 ',                  // 탭 없는 버전
+  ];
   for (const kw of IS_KEYWORDS) {
     const idx1 = rawText.indexOf(kw);
     if (idx1 < 0) continue;
     const idx2 = rawText.indexOf(kw, idx1 + kw.length + 10);
     const startIdx = idx2 >= 0 ? idx2 : idx1;
-    incomeSection = rawText.slice(Math.max(0, startIdx - 300), Math.min(rawText.length, startIdx + 5000));
+    incomeSection = rawText.slice(Math.max(0, startIdx - 500), Math.min(rawText.length, startIdx + 10000));
     if (incomeSection.length > 200) break;
   }
 
@@ -865,12 +887,13 @@ async function fetchDartDocText(rcptNo, mode) {
   }
 
   // ③ 핵심 재무 수치 + 손익계산서 섹션을 문서 앞에 주입
-  //   손익계산서 섹션이 이미 docBody에 포함된 경우 중복 주입 방지
+  //   손익계산서 발췌는 항상 주입 (중략 구간 대응 — 중복이어도 Gemini가 수치 확인 가능)
   let preamble = '';
   if (keyFinancials) preamble += keyFinancials + '\n\n';
-  if (incomeSection && !docBody.includes(incomeSection.slice(50, 150))) {
-    preamble += '[손익계산서 발췌 — 재무수치 확인용]\n' + incomeSection + '\n\n';
+  if (incomeSection && incomeSection.length > 200) {
+    preamble += '[손익계산서 발췌 — 재무수치 확인용. 아래 수치를 반드시 활용하세요]\n' + incomeSection + '\n\n';
   }
+  console.log(`[fetchDartDocText] preamble=${preamble.length}자, docBody=${docBody.length}자, 총=${(preamble+docBody).length}자`);
   return preamble + docBody;
 }
 
@@ -898,7 +921,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v6`;
+  const cacheKey = `${rcptNo}_${mode}_v7`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
