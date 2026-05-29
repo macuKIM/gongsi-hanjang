@@ -804,7 +804,7 @@ function extractKeyFinancials(rawText) {
 async function fetchDartDocText(rcptNo, mode) {
   const docRes = await axios.get('https://opendart.fss.or.kr/api/document.xml', {
     params: { crtfc_key: DART_API_KEY, rcept_no: rcptNo },
-    responseType: 'arraybuffer', timeout: 20000,
+    responseType: 'arraybuffer', timeout: 35000,
   });
   const docBuf = Buffer.from(docRes.data);
   if (docBuf.length < 4 || docBuf[0] !== 0x50 || docBuf[1] !== 0x4B) {
@@ -937,7 +937,7 @@ app.get('/api/summarize-stream', async (req, res) => {
 
     const streamResult = await withRetry(
       () => model.generateContentStream(userMsg),
-      5, 3000,
+      3, 1000,
       (attempt, max) => send({ type: 'progress', msg: `🤖 AI가 열심히 분석하고 있어요... (${attempt}/${max})` })
     );
     let fullText = '';
