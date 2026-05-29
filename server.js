@@ -604,7 +604,7 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v7`;
+  const cacheKey = `${rcptNo}_${mode}_v8`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
@@ -739,12 +739,12 @@ async function fetchDartFinancials(corpCode, rcptNo) {
         axios.get('https://opendart.fss.or.kr/api/fnlttSinglAcnt.json', {
           params: { crtfc_key: DART_API_KEY, corp_code: corpCode,
                     bsns_year: String(bsnsYear), reprt_code: '11011', fs_div: 'CFS' },
-          timeout: 7000,
+          timeout: 5000,
         }),
         axios.get('https://opendart.fss.or.kr/api/fnlttSinglAcnt.json', {
           params: { crtfc_key: DART_API_KEY, corp_code: corpCode,
                     bsns_year: String(bsnsYear), reprt_code: '11011', fs_div: 'OFS' },
-          timeout: 7000,
+          timeout: 5000,
         }),
       ]);
 
@@ -990,14 +990,14 @@ async function fetchDartDocText(rcptNo, mode, corpCode) {
 
   let preamble = '';
   if (dartApiFinancials) {
-    // ★ DART API 성공 → 최우선 주입
+    // ★ DART API 성공 → 최우선 주입, incomeSection 스킵 (입력 크기 최소화)
     preamble += dartApiFinancials + '\n\n';
   } else {
     // DART API 실패 시 기존 텍스트 추출 폴백
     if (keyFinancials) preamble += keyFinancials + '\n\n';
-  }
-  if (incomeSection && incomeSection.length > 200) {
-    preamble += '[손익계산서 발췌 — 재무수치 확인용]\n' + incomeSection + '\n\n';
+    if (incomeSection && incomeSection.length > 200) {
+      preamble += '[손익계산서 발췌 — 재무수치 확인용]\n' + incomeSection + '\n\n';
+    }
   }
   console.log(`[fetchDartDocText] dartAPI=${!!dartApiFinancials}, preamble=${preamble.length}자, docBody=${docBody.length}자`);
   return preamble + docBody;
@@ -1028,7 +1028,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v7`;
+  const cacheKey = `${rcptNo}_${mode}_v8`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
