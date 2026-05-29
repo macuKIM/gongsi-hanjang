@@ -2442,9 +2442,10 @@ async function loadSummary(rcptNo, title, date, submitter, _candidates = []) {
   setStreamLoadingMsg('AI가 공시를 분석하는 중...');
 
   const corpName   = dartState.currentCompany?.corpName || '';
+  const corpCode   = dartState.currentCompany?.corpCode || '';
   const isAudit    = (title || '').includes('감사보고서');
   const reportType = isAudit ? 'audit' : 'general';
-  const streamUrl  = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=${reportType}&corpName=${encodeURIComponent(corpName)}`;
+  const streamUrl  = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=${reportType}&corpName=${encodeURIComponent(corpName)}&corpCode=${encodeURIComponent(corpCode)}`;
   const summaryEl = document.getElementById("dd-summary");
   let accumulated = '';
 
@@ -2590,7 +2591,8 @@ async function loadExpertSummary(rcptNo, title) {
   }
 
   const corpName  = dartState.currentCompany?.corpName || '';
-  const streamUrl = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=expert&corpName=${encodeURIComponent(corpName)}`;
+  const corpCode2 = dartState.currentCompany?.corpCode || '';
+  const streamUrl = `/api/summarize-stream?rcptNo=${encodeURIComponent(rcptNo)}&mode=expert&corpName=${encodeURIComponent(corpName)}&corpCode=${encodeURIComponent(corpCode2)}`;
   const summaryEl = document.getElementById("dd-summary");
   let accumulated = '';
 

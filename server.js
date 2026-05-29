@@ -712,6 +712,99 @@ ${docText}`;
 });
 
 // ─────────────────────────────────────────────────────────
+// 헬퍼: DART 재무제표 API로 핵심 수치 직접 조회
+//  ZIP 텍스트 추출 실패와 무관하게 수치를 가져옴
+//  API: opendart.fss.or.kr/api/fnlttSinglAcnt.json
+// ─────────────────────────────────────────────────────────
+async function fetchDartFinancials(corpCode, rcptNo) {
+  if (!corpCode || !DART_API_KEY) return null;
+  // rcptNo 앞 4자리 = 접수연도. 사업보고서는 보통 접수연도-1이 사업연도
+  const rcptYear = parseInt(rcptNo.slice(0, 4), 10);
+  const yearCandidates = [rcptYear - 1, rcptYear]; // 사업연도 후보 (순서 중요)
+
+  const toKorean = (str) => {
+    if (!str || str === '-' || str === '') return null;
+    const num = parseInt(str.replace(/,/g, ''), 10);
+    if (isNaN(num)) return null;
+    const sign = num < 0 ? '-' : '';
+    const abs  = Math.abs(num);
+    if (abs >= 1_000_000_000_000) return sign + (abs / 1_000_000_000_000).toFixed(1) + '조원';
+    return sign + Math.round(abs / 100_000_000).toLocaleString() + '억원';
+  };
+
+  for (const bsnsYear of yearCandidates) {
+    try {
+      // 연결(CFS)·별도(OFS) 병렬 조회 — 데이터 있는 쪽 사용
+      const [cfsRes, ofsRes] = await Promise.allSettled([
+        axios.get('https://opendart.fss.or.kr/api/fnlttSinglAcnt.json', {
+          params: { crtfc_key: DART_API_KEY, corp_code: corpCode,
+                    bsns_year: String(bsnsYear), reprt_code: '11011', fs_div: 'CFS' },
+          timeout: 7000,
+        }),
+        axios.get('https://opendart.fss.or.kr/api/fnlttSinglAcnt.json', {
+          params: { crtfc_key: DART_API_KEY, corp_code: corpCode,
+                    bsns_year: String(bsnsYear), reprt_code: '11011', fs_div: 'OFS' },
+          timeout: 7000,
+        }),
+      ]);
+
+      const getList = (r) =>
+        r.status === 'fulfilled' && r.value.data.status === '000' && r.value.data.list?.length
+          ? r.value.data.list : null;
+      const list = getList(cfsRes) || getList(ofsRes);
+      if (!list) continue; // 해당 연도 데이터 없음 → 다음 후보 시도
+
+      // 손익계산서(IS) 항목만 추출
+      const is = list.filter(i => i.sj_div === 'IS');
+      if (!is.length) continue;
+
+      const find = (...kws) => is.find(i =>
+        kws.some(kw => i.account_nm.includes(kw) || (i.account_id||'').includes(kw))
+      );
+      const rev = find('매출액','수익(매출액)','영업수익','건설계약수익','건설수익','Revenue');
+      const op  = find('영업이익','OperatingIncome','OperatingProfit');
+      const net = find('당기순이익','ProfitLoss','NetIncome');
+
+      if (!rev && !op) continue;
+
+      const hdr = rev || op;
+      const t = hdr.thstrm_nm, f = hdr.frmtrm_nm, b = hdr.bfefrmtrm_nm;
+      const yrs = [t, f, b].filter(Boolean).join('\t');
+
+      const lines = [
+        `[★ DART 공식 재무수치 — 아래 값을 그대로 테이블에 쓰세요. "확인불가" 절대 금지 ★]`,
+        `구분\t${yrs}`,
+      ];
+      const row = (lbl, item) => {
+        if (!item) return null;
+        const vals = [item.thstrm_amount, item.frmtrm_amount, item.bfefrmtrm_amount]
+          .map(toKorean).map(v => v || '-').join('\t');
+        return `${lbl}\t${vals}`;
+      };
+      const revRow = row('매출액', rev);
+      const opRow  = row('영업이익', op);
+      const netRow = row('당기순이익', net);
+
+      if (revRow)  lines.push(revRow);
+      if (opRow)   lines.push(opRow);
+      // 영업이익률 계산
+      if (rev && op) {
+        const r = parseInt((rev.thstrm_amount||'0').replace(/,/g,''), 10);
+        const o = parseInt((op.thstrm_amount||'0').replace(/,/g,''), 10);
+        if (r !== 0) lines.push(`영업이익률\t${(o/r*100).toFixed(1)}%\t-\t-`);
+      }
+      if (netRow)  lines.push(netRow);
+
+      console.log(`[DART 재무API] ${corpCode} bsns_year=${bsnsYear}: ${lines.length}행`);
+      return lines.join('\n') + '\n';
+    } catch(e) {
+      console.warn(`[DART 재무API] ${corpCode} ${bsnsYear} 오류:`, e.message);
+    }
+  }
+  return null; // 모든 후보 실패
+}
+
+// ─────────────────────────────────────────────────────────
 // 헬퍼: 재무제표에서 핵심 수치 행만 미리 추출
 //  압축 후에도 Gemini가 실제 숫자를 정확히 쓸 수 있도록
 //  주요 재무 지표 행을 문서 앞부분에 따로 주입
@@ -801,7 +894,7 @@ function extractKeyFinancials(rawText) {
 // ─────────────────────────────────────────────────────────
 // 헬퍼: DART 문서 ZIP → 텍스트 추출 (두 엔드포인트 공용)
 // ─────────────────────────────────────────────────────────
-async function fetchDartDocText(rcptNo, mode) {
+async function fetchDartDocText(rcptNo, mode, corpCode) {
   const docRes = await axios.get('https://opendart.fss.or.kr/api/document.xml', {
     params: { crtfc_key: DART_API_KEY, rcept_no: rcptNo },
     responseType: 'arraybuffer', timeout: 35000,
@@ -887,13 +980,26 @@ async function fetchDartDocText(rcptNo, mode) {
   }
 
   // ③ 핵심 재무 수치 + 손익계산서 섹션을 문서 앞에 주입
-  //   손익계산서 발췌는 항상 주입 (중략 구간 대응 — 중복이어도 Gemini가 수치 확인 가능)
-  let preamble = '';
-  if (keyFinancials) preamble += keyFinancials + '\n\n';
-  if (incomeSection && incomeSection.length > 200) {
-    preamble += '[손익계산서 발췌 — 재무수치 확인용. 아래 수치를 반드시 활용하세요]\n' + incomeSection + '\n\n';
+  //   우선순위: DART 재무API > extractKeyFinancials > 손익계산서 섹션 발췌
+
+  // DART 재무제표 API 직접 호출 (corpCode 있을 때 — 가장 확실한 수치 출처)
+  let dartApiFinancials = '';
+  if (corpCode) {
+    dartApiFinancials = await fetchDartFinancials(corpCode, rcptNo) || '';
   }
-  console.log(`[fetchDartDocText] preamble=${preamble.length}자, docBody=${docBody.length}자, 총=${(preamble+docBody).length}자`);
+
+  let preamble = '';
+  if (dartApiFinancials) {
+    // ★ DART API 성공 → 최우선 주입
+    preamble += dartApiFinancials + '\n\n';
+  } else {
+    // DART API 실패 시 기존 텍스트 추출 폴백
+    if (keyFinancials) preamble += keyFinancials + '\n\n';
+  }
+  if (incomeSection && incomeSection.length > 200) {
+    preamble += '[손익계산서 발췌 — 재무수치 확인용]\n' + incomeSection + '\n\n';
+  }
+  console.log(`[fetchDartDocText] dartAPI=${!!dartApiFinancials}, preamble=${preamble.length}자, docBody=${docBody.length}자`);
   return preamble + docBody;
 }
 
@@ -906,6 +1012,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const rcptNo   = (req.query.rcptNo   || '').trim();
   const mode     = (req.query.mode     || 'general').trim();
   const corpName = (req.query.corpName || '이 기업').trim();
+  const corpCode = (req.query.corpCode || '').trim();  // ★ DART 재무API용
   const year     = (req.query.year     || '').trim();
   const term     = (req.query.term     || '').trim();
 
@@ -933,7 +1040,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   send({ type: 'progress', msg: '📥 DART 문서 다운로드 중...' });
   let docText = '';
   try {
-    docText = await fetchDartDocText(rcptNo, mode);
+    docText = await fetchDartDocText(rcptNo, mode, corpCode);
     if (!docText.trim()) {
       send({ type: 'error', msg: '텍스트 추출 실패' });
       return res.end();
