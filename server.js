@@ -175,7 +175,7 @@ try {
 // ── 캐시 설정 ──────────────────────────────────────────────
 // 이 값을 올릴 때만 기존 캐시 무효화됨
 // AI 프롬프트 구조가 크게 바뀔 때만 올릴 것
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;  // 30일 (ms)
 
 // ── 파일 캐시 폴백 (Firestore 미연결 시) ──────────────────
@@ -345,11 +345,19 @@ const SYSTEM_EXPERT = `당신은 '공시한장' 서비스의 전문가용 리포
 - 사업보고서에 없는 내용은 쓰지 말 것. 추측 금지.
 - 중요 포인트는 <b>bold</b>로 강조.
 
+[재무 수치 작성 규칙 — 삼성증권·미래에셋 리포트 기준]
+- 모든 금액은 반드시 억원 단위로 환산하여 표기한다. 원(₩) 단위 금액을 그대로 쓰는 것은 엄격히 금지한다.
+- 1조 이상: X.X조원 형식 (예: 4.6조원, 33.6조원)
+- 1조 미만: X,XXX.X억원 형식 (예: 4,611.4억원, 367.1억원)
+- 재무제표 테이블 상단에 "(단위: 억원)" 표기.
+- 사업보고서 원문에 원 단위 숫자가 있더라도 반드시 억원으로 변환하여 표기할 것.
+
 [절대 금지]
 - HTML 태그 외 마크다운 문법(##, ** 등) 금지.
 - 투자 권유, 매수/매도 추천, 목표주가 금지.
 - <html> <head> <body> <script> <style> 태그 금지.
 - 추측을 사실처럼 쓰지 말 것.
+- 원(₩) 단위 금액 직접 표기 금지 (예: 4,611,415,586,302원 이런 형식 절대 사용 금지).
 
 [사용 가능한 HTML 클래스]
 <div class='report fade'> / <div class='rkick'> / <h3> / <h4> /
@@ -781,6 +789,7 @@ async function fetchDartFinancials(corpCode, rcptNo) {
   const rcptYear = parseInt(rcptNo.slice(0, 4), 10);
   const yearCandidates = [rcptYear - 1, rcptYear]; // 사업연도 후보 (순서 중요)
 
+  // ★ 삼성증권·미래에셋 스타일: 1조↑ → X.X조원, 1조↓ → X,XXX.X억원
   const toKorean = (str) => {
     if (!str || str === '-' || str === '') return null;
     const num = parseInt(str.replace(/,/g, ''), 10);
@@ -788,7 +797,10 @@ async function fetchDartFinancials(corpCode, rcptNo) {
     const sign = num < 0 ? '-' : '';
     const abs  = Math.abs(num);
     if (abs >= 1_000_000_000_000) return sign + (abs / 1_000_000_000_000).toFixed(1) + '조원';
-    return sign + Math.round(abs / 100_000_000).toLocaleString() + '억원';
+    // 1조 미만: X,XXX.X억원 (소수점 1자리)
+    const okuRaw = (abs / 100_000_000).toFixed(1);
+    const [intPart, decPart] = okuRaw.split('.');
+    return sign + parseInt(intPart, 10).toLocaleString() + '.' + decPart + '억원';
   };
 
   for (const bsnsYear of yearCandidates) {
