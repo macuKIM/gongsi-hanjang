@@ -1674,16 +1674,16 @@ function updateFreePill(){
   } else {
     el.textContent   = '무료 횟수 소진 · 구독 추천';
     el.style.cursor  = 'pointer';
-    el.onclick       = openPay;
+    el.onclick       = openSubscribe;
   }
 }
 
 /* =========================================================
    결제 모달 (데모)
    ========================================================= */
-/* 구독하기 클릭 → 비로그인이면 로그인 모달 먼저, 로그인 상태면 바로 결제 */
+/* 구독하기 클릭 → Firebase 로그인 안 돼있으면 로그인 먼저, 로그인 상태면 바로 결제 */
 function openSubscribe() {
-  if (!getUser()) {
+  if (!_firebaseUser) {
     openLogin(() => openPay());  // 로그인 완료 후 결제 모달 열기
   } else {
     openPay();
@@ -1698,15 +1698,15 @@ function selectPlan(el,plan){
 }
 function fakePay(){
   closePay();
-  // 데모: 구독 완료 시 오늘 열람 기록 초기화 (실제 서비스에서는 서버에서 구독 상태 관리)
+  // 구독 완료 처리 (추후 실제 결제 연동 시 서버에서 Firestore subscribed=true 업데이트)
+  _cachedSubscribed = true;
   try {
     const d = getFreeData();
-    d.subscribed = true;
     d.viewed = [];
     saveFreeData(d);
   } catch {}
   updateFreePill();
-  toast("구독 완료! 이제 무제한으로 볼 수 있어요 (데모)");
+  toast("구독 완료! 이제 무제한으로 볼 수 있어요 🎉");
   if(state.current){ state.deepTab="general"; syncDeepTabs(); renderDeep(); show("deep"); }
 }
 
@@ -1730,8 +1730,8 @@ let _loginPendingAction = null;  // 로그인 후 실행할 콜백
 
 function openLogin(callback) {
   _loginPendingAction = callback || null;
-  // 이미 로그인된 경우 바로 결제 화면
-  if (_firebaseUser || getUser()) { openPay(); return; }
+  // Firebase 로그인 되어 있으면 바로 결제 화면
+  if (_firebaseUser) { openPay(); return; }
   document.getElementById("loginStep1").style.display = "block";
   document.getElementById("loginStep2").style.display = "none";
   document.getElementById("loginStep3").style.display = "none";
