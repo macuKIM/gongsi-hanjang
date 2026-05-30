@@ -238,7 +238,7 @@ const SYSTEM_GENERAL = `당신은 '공시한장' 서비스의 리포트 작성 A
       <tbody>
         <tr><td>매출액</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
         <tr><td>영업이익</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
-        <tr><td>영업이익률</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
+        <tr><td>영업이익률</td><td>[영업이익/매출액×100, 소수점1자리 %, 모든 연도 반드시 계산 표기]</td><td>[동일]</td><td>[동일]</td></tr>
         <tr><td>당기순이익</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td><td>[원문의 실제 수치]</td></tr>
       </tbody>
     </table>
@@ -604,7 +604,7 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v8`;
+  const cacheKey = `${rcptNo}_${mode}_v9`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
@@ -787,11 +787,17 @@ async function fetchDartFinancials(corpCode, rcptNo) {
 
       if (revRow)  lines.push(revRow);
       if (opRow)   lines.push(opRow);
-      // 영업이익률 계산
+      // 영업이익률 계산 (3개 연도 모두)
       if (rev && op) {
-        const r = parseInt((rev.thstrm_amount||'0').replace(/,/g,''), 10);
-        const o = parseInt((op.thstrm_amount||'0').replace(/,/g,''), 10);
-        if (r !== 0) lines.push(`영업이익률\t${(o/r*100).toFixed(1)}%\t-\t-`);
+        const calcRate = (rAmt, oAmt) => {
+          const r = parseInt((rAmt||'0').replace(/[,\s]/g,''), 10);
+          const o = parseInt((oAmt||'0').replace(/[,\s]/g,''), 10);
+          return (r !== 0) ? `${(o/r*100).toFixed(1)}%` : '-';
+        };
+        const rateT = calcRate(rev.thstrm_amount,    op.thstrm_amount);
+        const rateF = calcRate(rev.frmtrm_amount,    op.frmtrm_amount);
+        const rateB = calcRate(rev.bfefrmtrm_amount, op.bfefrmtrm_amount);
+        lines.push(`영업이익률\t${rateT}\t${rateF}\t${rateB}`);
       }
       if (netRow)  lines.push(netRow);
 
@@ -1028,7 +1034,7 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v8`;
+  const cacheKey = `${rcptNo}_${mode}_v9`;
   const cached   = getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
