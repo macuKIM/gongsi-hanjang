@@ -173,7 +173,7 @@ try {
 // ── 캐시 설정 ──────────────────────────────────────────────
 // 이 값을 올릴 때만 기존 캐시 무효화됨
 // AI 프롬프트 구조가 크게 바뀔 때만 올릴 것
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;  // 30일 (ms)
 
 // ── 파일 캐시 폴백 (Firestore 미연결 시) ──────────────────
@@ -738,7 +738,7 @@ app.get('/api/summarize', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 8192 : 6000 },
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 16000 : 6000 },
       safetySettings   : GEMINI_SAFETY,
     });
 
@@ -1124,7 +1124,7 @@ app.get('/api/summarize-stream', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 6000 : 6000 },
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 16000 : 6000 },
       safetySettings   : GEMINI_SAFETY,
     });
 
