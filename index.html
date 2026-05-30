@@ -822,7 +822,27 @@
   <span style="display:inline-block;margin-top:6px;">문의 &nbsp;<a href="mailto:ckswnd0131@gmail.com" style="color:var(--gold-soft);text-decoration:none;">ckswnd0131@gmail.com</a></span>
 </footer>
 
+<!-- ── Firebase SDK (compat v9) ── -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
 <script>
+/* ── Firebase 초기화 ── */
+const firebaseConfig = {
+  apiKey           : "AIzaSyAUSgwQ0HOZhYAL6B_vm4nO8P_PVfwn-B0",
+  authDomain       : "gongsi-hanjang.firebaseapp.com",
+  projectId        : "gongsi-hanjang",
+  storageBucket    : "gongsi-hanjang.firebasestorage.app",
+  messagingSenderId: "750876769899",
+  appId            : "1:750876769899:web:eb7160e1b09ead8e5fbb2e"
+};
+firebase.initializeApp(firebaseConfig);
+const _fbAuth = firebase.auth();
+const _fbDb   = firebase.firestore();
+let _cachedSubscribed = false;   // Firestore 구독 상태 메모리 캐시
+let _firebaseUser     = null;    // 현재 로그인된 Firebase 유저
+
 /* =========================================================
    데이터 (데모용 예시 수치 — 실제 서비스에서는 DART에서 자동 수집)
    ========================================================= */
@@ -982,6 +1002,7 @@ function hasViewed(rcptNo) {
 
 /* 오늘 남은 무료 횟수 */
 function getFreeLeft() {
+  if (_cachedSubscribed) return 9999;  // 구독자 무제한
   const d    = getFreeData();
   const user = getUser();
   const max  = user ? FREE_PER_DAY + FREE_AFTER_JOIN : FREE_PER_DAY;
@@ -1013,6 +1034,17 @@ function getCached(rcptNo, mode) {
 
 /* ── 회원 정보 ── */
 function getUser() {
+  // Firebase 로그인 상태 우선
+  if (_firebaseUser) {
+    return {
+      nickname : _firebaseUser.displayName || _firebaseUser.email || '회원',
+      provider : (_firebaseUser.providerData[0]?.providerId || 'unknown').replace('.com',''),
+      joinedAt : _firebaseUser.metadata?.creationTime
+        ? new Date(_firebaseUser.metadata.creationTime).getTime() : Date.now(),
+      uid      : _firebaseUser.uid,
+    };
+  }
+  // 미로그인: localStorage 레거시 호환
   try { return JSON.parse(localStorage.getItem(LS.USER) || 'null'); } catch { return null; }
 }
 function saveUser(user) {
@@ -1627,15 +1659,22 @@ function updateFreePill(){
   const user = getUser();
   const el   = document.getElementById("freePill");
   if(!el) return;
-  if(left > 0) {
-    el.textContent = `오늘 무료 자세히보기 ${left}회`;
+  if (_cachedSubscribed) {
+    el.textContent   = '✅ 구독 중 · 무제한';
+    el.style.cursor  = 'default';
+    el.onclick       = null;
+  } else if(left > 0) {
+    el.textContent   = `오늘 무료 자세히보기 ${left}회`;
+    el.style.cursor  = 'default';
+    el.onclick       = null;
   } else if(!user) {
-    el.textContent = '가입하면 1회 추가';
-    el.style.cursor = 'pointer';
-    el.onclick = openLogin;
+    el.textContent   = '가입하면 1회 추가';
+    el.style.cursor  = 'pointer';
+    el.onclick       = openLogin;
   } else {
-    el.textContent = '무료 횟수 소진 · 구독 추천';
-    el.onclick = openPay;
+    el.textContent   = '무료 횟수 소진 · 구독 추천';
+    el.style.cursor  = 'pointer';
+    el.onclick       = openPay;
   }
 }
 
@@ -1691,8 +1730,8 @@ let _loginPendingAction = null;  // 로그인 후 실행할 콜백
 
 function openLogin(callback) {
   _loginPendingAction = callback || null;
-  // 로그인 이미 되어 있으면 바로 paywall
-  if (getUser()) { openPay(); return; }
+  // 이미 로그인된 경우 바로 결제 화면
+  if (_firebaseUser || getUser()) { openPay(); return; }
   document.getElementById("loginStep1").style.display = "block";
   document.getElementById("loginStep2").style.display = "none";
   document.getElementById("loginStep3").style.display = "none";
@@ -1718,13 +1757,24 @@ function closeTerms() {
    - Kakao : Kakao SDK → firebase.auth().signInWithCustomToken(kakaoCustomToken)
    - Naver : Naver SDK → firebase.auth().signInWithCustomToken(naverCustomToken)
 */
-function socialLogin(provider) {
-  // 닉네임 단계로 이동 (데모: 즉시 진행)
-  const names = { google:'구글', kakao:'카카오', naver:'네이버', apple:'애플' };
-  document.getElementById("loginStep1").style.display = "none";
-  document.getElementById("loginStep2").style.display = "block";
-  // 나중에 OAuth 연동 시: provider 정보를 저장해 두었다가 completeRegister에서 사용
-  window._pendingProvider = provider;
+async function socialLogin(provider) {
+  if (provider === 'google') {
+    try {
+      const authProvider = new firebase.auth.GoogleAuthProvider();
+      await _fbAuth.signInWithPopup(authProvider);
+      // onAuthStateChanged → _syncUserFromFirebase 가 자동으로 후처리
+    } catch(err) {
+      if (err.code !== 'auth/popup-closed-by-user') {
+        toast('구글 로그인 오류: ' + (err.message || err.code));
+      }
+    }
+  } else if (provider === 'kakao') {
+    toast('카카오 로그인은 준비 중입니다. 구글 로그인을 이용해 주세요.');
+  } else if (provider === 'naver') {
+    toast('네이버 로그인은 준비 중입니다. 구글 로그인을 이용해 주세요.');
+  } else if (provider === 'apple') {
+    toast('애플 로그인은 준비 중입니다. 구글 로그인을 이용해 주세요.');
+  }
 }
 
 function completeRegister() {
@@ -1765,6 +1815,53 @@ document.getElementById("loginOverlay").addEventListener("click", e => {
 document.getElementById("termsOverlay").addEventListener("click", e => {
   if (e.target.id === "termsOverlay") closeTerms();
 });
+
+/* ── Firebase 인증 상태 동기화 ── */
+async function _syncUserFromFirebase(fbUser) {
+  _firebaseUser = fbUser;
+  if (!fbUser) {
+    _cachedSubscribed = false;
+    updateFreePill();
+    return;
+  }
+
+  // Firestore에서 구독 상태 조회
+  try {
+    const docRef = _fbDb.collection('users').doc(fbUser.uid);
+    const doc    = await docRef.get();
+    if (doc.exists && doc.data().subscribed === true) {
+      _cachedSubscribed = true;
+    } else {
+      _cachedSubscribed = false;
+      // 첫 로그인: 사용자 문서 생성
+      if (!doc.exists) {
+        await docRef.set({
+          displayName : fbUser.displayName || '',
+          email       : fbUser.email || '',
+          provider    : (fbUser.providerData[0]?.providerId || ''),
+          createdAt   : firebase.firestore.FieldValue.serverTimestamp(),
+          subscribed  : false,
+        }, { merge: true });
+      }
+    }
+  } catch(e) {
+    console.warn('Firestore sync error:', e);
+    _cachedSubscribed = false;
+  }
+
+  updateFreePill();
+
+  // 로그인 모달이 열려 있으면 → 닉네임 단계 건너뛰고 완료 화면으로
+  const overlay = document.getElementById('loginOverlay');
+  if (overlay && overlay.style.display === 'flex') {
+    document.getElementById('loginStep1').style.display = 'none';
+    document.getElementById('loginStep2').style.display = 'none';
+    document.getElementById('loginStep3').style.display = 'block';
+  }
+}
+
+// Firebase 인증 상태 변경 감지
+_fbAuth.onAuthStateChanged(fbUser => _syncUserFromFirebase(fbUser));
 
 function initDark(){
   let d=true; // 다크모드 기본값
