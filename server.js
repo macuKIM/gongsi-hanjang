@@ -154,14 +154,16 @@ const GEMINI_TEMP = {
 const admin = require('firebase-admin');
 
 // ── Firebase Admin 초기화 ──────────────────────────────────
-let _db = null;
+let _db     = null;   // Firestore 인스턴스
+let _fbAuth = null;   // Firebase Auth Admin 인스턴스
 try {
   const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
   if (sa.project_id) {
     if (!admin.apps.length) {
       admin.initializeApp({ credential: admin.credential.cert(sa) });
     }
-    _db = admin.firestore();
+    _db     = admin.firestore();
+    _fbAuth = admin.auth();
     console.log('[Firebase] Firestore 캐시 연결 완료 ✅');
   } else {
     console.warn('[Firebase] FIREBASE_SERVICE_ACCOUNT 미설정 → 파일 캐시 폴백');
@@ -738,7 +740,7 @@ app.get('/api/summarize', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 16000 : 6000 },
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 24000 : 6000 },
       safetySettings   : GEMINI_SAFETY,
     });
 
@@ -1090,7 +1092,28 @@ app.get('/api/summarize-stream', async (req, res) => {
 
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
-  // ── ① 캐시 확인 ──────────────────────────────────────────
+  // ── ① 전문가용 구독 검증 (로그인된 유저만 체크) ─────────────
+  if (mode === 'expert' && _db) {
+    const idToken = (req.query.idToken || '').trim();
+    if (idToken) {
+      try {
+        const decoded  = await _fbAuth.verifyIdToken(idToken);
+        const userDoc  = await _fbDb.collection('users').doc(decoded.uid).get();
+        const subscribed = userDoc.exists && userDoc.data().subscribed === true;
+        if (!subscribed) {
+          send({ type: 'error', msg: 'subscription_required' });
+          return res.end();
+        }
+        console.log(`[stream] 구독 확인 ✅ uid=${decoded.uid}`);
+      } catch (authErr) {
+        // 토큰 만료 등: 비로그인으로 처리 (클라이언트가 1회 무료 관리)
+        console.warn('[stream] 토큰 검증 실패, 비로그인으로 처리:', authErr.message);
+      }
+    }
+    // idToken 없음(비로그인): 클라이언트가 1회 무료 관리 → 허용
+  }
+
+  // ── ② 캐시 확인 ──────────────────────────────────────────
   const cacheKey = `${rcptNo}_${mode}`;
   const cached   = await getFromCache(cacheKey);
   if (cached) {
@@ -1124,7 +1147,7 @@ app.get('/api/summarize-stream', async (req, res) => {
     const model = genAI.getGenerativeModel({
       model            : modelName,
       systemInstruction: mode === 'expert' ? SYSTEM_EXPERT : mode === 'audit' ? SYSTEM_AUDIT : SYSTEM_GENERAL,
-      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 16000 : 6000 },
+      generationConfig : { temperature: temp, topP: 0.8, maxOutputTokens: mode === 'expert' ? 24000 : 6000 },
       safetySettings   : GEMINI_SAFETY,
     });
 
