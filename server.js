@@ -145,42 +145,99 @@ const GEMINI_TEMP = {
 };
 
 // ═══════════════════════════════════════════════════════════
-//  서버 사이드 캐시 (파일 기반)
-//  ─ A가 삼성전자 요약하면 summary_cache.json에 저장
-//  ─ B가 같은 공시 요청하면 Gemini 안 쓰고 바로 반환
-//  ─ 나중에 Firebase로 업그레이드할 때 saveToCache / getFromCache 2개 함수만 교체하면 됨
+//  서버 사이드 캐시 — Firestore 기반 (영구 보관)
+//
+//  ─ 재배포해도 캐시 유지  (Vercel /tmp 와 달리 사라지지 않음)
+//  ─ CACHE_VERSION 을 올릴 때만 캐시 무효화  (UI버그 수정 등은 버전 안 올려도 됨)
+//  ─ FIREBASE_SERVICE_ACCOUNT 미설정 시 → /tmp 파일캐시로 자동 폴백 (로컬 개발용)
 // ═══════════════════════════════════════════════════════════
-// Vercel 서버리스는 __dirname 쓰기 불가 → /tmp 사용, 로컬은 __dirname 사용
+const admin = require('firebase-admin');
+
+// ── Firebase Admin 초기화 ──────────────────────────────────
+let _db = null;
+try {
+  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT || '{}');
+  if (sa.project_id) {
+    if (!admin.apps.length) {
+      admin.initializeApp({ credential: admin.credential.cert(sa) });
+    }
+    _db = admin.firestore();
+    console.log('[Firebase] Firestore 캐시 연결 완료 ✅');
+  } else {
+    console.warn('[Firebase] FIREBASE_SERVICE_ACCOUNT 미설정 → 파일 캐시 폴백');
+  }
+} catch (e) {
+  console.warn('[Firebase] 초기화 실패:', e.message, '→ 파일 캐시 폴백');
+}
+
+// ── 캐시 설정 ──────────────────────────────────────────────
+// 이 값을 올릴 때만 기존 캐시 무효화됨
+// AI 프롬프트 구조가 크게 바뀔 때만 올릴 것
+const CACHE_VERSION = 'v1';
+const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;  // 30일 (ms)
+
+// ── 파일 캐시 폴백 (Firestore 미연결 시) ──────────────────
 const CACHE_FILE = process.env.VERCEL
   ? '/tmp/summary_cache.json'
   : path.join(__dirname, 'summary_cache.json');
-const CACHE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;  // 30일 (ms)
-
-// 서버 시작 시 캐시 파일 로드
-let summaryCache = {};
+let _fileCache = {};
 try {
-  summaryCache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
-  const count = Object.keys(summaryCache).length;
-  console.log(`[캐시] ${count}개 항목 로드됨`);
-} catch {
-  summaryCache = {};
+  _fileCache = JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
+  console.log(`[캐시] 파일 캐시 ${Object.keys(_fileCache).length}개 로드`);
+} catch { _fileCache = {}; }
+
+// Firestore 문서 ID 안전화 (특수문자 → _)
+function _safeKey(key) {
+  return key.replace(/[^a-zA-Z0-9가-힣_\-]/g, '_').slice(0, 400);
 }
 
-function getFromCache(key) {
-  const item = summaryCache[key];
-  if (!item) return null;
-  if (Date.now() - item.ts > CACHE_MAX_AGE) {
-    delete summaryCache[key];
-    return null;
+async function getFromCache(key) {
+  const id = _safeKey(key);
+
+  if (_db) {
+    try {
+      const doc = await _db.collection('summaries').doc(id).get();
+      if (!doc.exists) return null;
+      const d = doc.data();
+      if (d.version !== CACHE_VERSION) return null;                // 버전 불일치
+      if (d.expiresAt && d.expiresAt.toMillis() < Date.now()) return null;  // 만료
+      console.log(`[캐시] Firestore 히트 ✨ ${id}`);
+      return d.html;
+    } catch (e) {
+      console.warn('[캐시] Firestore 읽기 오류:', e.message);
+      return null;
+    }
   }
+
+  // 파일 캐시 폴백
+  const item = _fileCache[id];
+  if (!item || Date.now() - item.ts > CACHE_MAX_AGE) return null;
   return item.data;
 }
 
-function saveToCache(key, data, meta = {}) {
-  summaryCache[key] = { data, ts: Date.now(), ...meta };
-  // 비동기 파일 저장 (서버 성능에 영향 없음)
-  fs.writeFile(CACHE_FILE, JSON.stringify(summaryCache), () => {});
-  console.log(`[캐시] 저장: ${key}`);
+async function saveToCache(key, html, meta = {}) {
+  const id = _safeKey(key);
+
+  if (_db) {
+    const now       = new Date();
+    const expiresAt = new Date(now.getTime() + CACHE_MAX_AGE);
+    // fire-and-forget (스트리밍 응답 속도에 영향 없음)
+    _db.collection('summaries').doc(id).set({
+      html,
+      version  : CACHE_VERSION,
+      corpName : meta.corpName || '',
+      mode     : meta.mode || '',
+      createdAt: admin.firestore.Timestamp.fromDate(now),
+      expiresAt: admin.firestore.Timestamp.fromDate(expiresAt),
+    }).catch(e => console.warn('[캐시] Firestore 저장 오류:', e.message));
+    console.log(`[캐시] Firestore 저장: ${id}`);
+    return;
+  }
+
+  // 파일 캐시 폴백
+  _fileCache[id] = { data: html, ts: Date.now(), ...meta };
+  fs.writeFile(CACHE_FILE, JSON.stringify(_fileCache), () => {});
+  console.log(`[캐시] 파일 저장: ${id}`);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -604,8 +661,8 @@ app.get('/api/summarize', async (req, res) => {
   if (!rcptNo) return res.status(400).json({ error: 'rcptNo가 필요해요.' });
 
   // ── ① 서버 캐시 확인 ─────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v9`;
-  const cached   = getFromCache(cacheKey);
+  const cacheKey = `${rcptNo}_${mode}`;
+  const cached   = await getFromCache(cacheKey);
   if (cached) {
     console.log(`[/api/summarize] ✨ 캐시 히트: ${cacheKey}`);
     return res.json({ mode, data: cached, rcptNo, fromCache: true });
@@ -1034,8 +1091,8 @@ app.get('/api/summarize-stream', async (req, res) => {
   const send = (obj) => { try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch(_) {} };
 
   // ── ① 캐시 확인 ──────────────────────────────────────────
-  const cacheKey = `${rcptNo}_${mode}_v9`;
-  const cached   = getFromCache(cacheKey);
+  const cacheKey = `${rcptNo}_${mode}`;
+  const cached   = await getFromCache(cacheKey);
   if (cached) {
     console.log(`[stream] 캐시 히트: ${cacheKey}`);
     send({ type: 'cached', data: cached });
@@ -1137,7 +1194,7 @@ app.get('/api/no-report-summary', async (req, res) => {
   if (!GEMINI_API_KEY) return res.status(500).json({ error: 'GEMINI_API_KEY 미설정' });
 
   const cacheKey = 'noreport_' + corpName + '_general';
-  const cached = getFromCache(cacheKey);
+  const cached = await getFromCache(cacheKey);
   if (cached) {
     console.log('[/api/no-report-summary] 캐시 히트:', corpName);
     return res.json({ data: cached, fromCache: true, noReport: true });
