@@ -534,7 +534,7 @@
     <div class="mast-actions">
       <span class="pill" id="freePill">오늘 무료 자세히보기 1회</span>
       <button class="dark-btn" id="darkBtn" onclick="toggleDark()" title="다크모드 전환">🌙</button>
-      <button class="btn-pro" onclick="openSubscribe()">구독하기</button>
+      <button class="btn-pro" id="subBtn" onclick="openSubscribe()">구독하기</button>
     </div>
   </div>
 </header>
@@ -842,8 +842,12 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const _fbAuth = firebase.auth();
 const _fbDb   = firebase.firestore();
-let _cachedSubscribed = false;   // Firestore 구독 상태 메모리 캐시
-let _firebaseUser     = null;    // 현재 로그인된 Firebase 유저
+let _cachedSubscribed    = false;   // Firestore 구독 상태 메모리 캐시
+let _firebaseUser        = null;    // 현재 로그인된 Firebase 유저
+let _subscriptionEndDate = null;    // 구독 만료일 (ms timestamp, null=무제한)
+
+// 관리자 이메일 — 항상 무제한 구독 권한
+const ADMIN_EMAILS = ['ckswnd0131@gmail.com'];
 
 /* =========================================================
    데이터 (데모용 예시 수치 — 실제 서비스에서는 DART에서 자동 수집)
@@ -1680,8 +1684,42 @@ function updateFreePill(){
   }
 }
 
+/* ── 상단 구독 버튼 상태 업데이트 ── */
+function updateSubBtn() {
+  const btn = document.getElementById('subBtn');
+  if (!btn) return;
+  const isAdmin = _firebaseUser && ADMIN_EMAILS.includes(_firebaseUser.email);
+
+  if (_cachedSubscribed) {
+    if (isAdmin || !_subscriptionEndDate) {
+      // 관리자 또는 영구 구독
+      btn.textContent = '관리자';
+      btn.onclick     = null;
+      btn.style.opacity = '0.6';
+      btn.style.fontSize = '';
+    } else {
+      // 일반 구독 → 만료일 표시
+      const d = new Date(_subscriptionEndDate);
+      const yy = String(d.getFullYear()).slice(2);
+      const mm = String(d.getMonth()+1).padStart(2,'0');
+      const dd = String(d.getDate()).padStart(2,'0');
+      const daysLeft = Math.ceil((_subscriptionEndDate - Date.now()) / 86400000);
+      btn.textContent = `만료 ${yy}.${mm}.${dd} (D-${daysLeft})`;
+      btn.onclick     = null;
+      btn.style.opacity  = '0.75';
+      btn.style.fontSize = '11px';
+    }
+  } else {
+    // 미로그인 또는 미구독
+    btn.textContent = '구독하기';
+    btn.onclick     = openSubscribe;
+    btn.style.opacity  = '';
+    btn.style.fontSize = '';
+  }
+}
+
 /* =========================================================
-   결제 모달 (데모)
+   결제 모달
    ========================================================= */
 /* 구독하기 클릭 → Firebase 로그인 안 돼있으면 로그인 먼저, 로그인 상태면 바로 결제 */
 function openSubscribe() {
@@ -1698,16 +1736,29 @@ function selectPlan(el,plan){
   document.querySelectorAll(".plan").forEach(p=>p.style.borderColor="");
   el.style.borderColor="var(--up)";
 }
-function fakePay(){
+async function fakePay(){
   closePay();
-  // 구독 완료 처리 (추후 실제 결제 연동 시 서버에서 Firestore subscribed=true 업데이트)
-  _cachedSubscribed = true;
-  try {
-    const d = getFreeData();
-    d.viewed = [];
-    saveFreeData(d);
-  } catch {}
-  updateFreePill();
+  const plan = state.selectedPlan || 'year';
+  const now  = new Date();
+  const end  = new Date(now);
+  if (plan === 'year') end.setFullYear(end.getFullYear() + 1);
+  else end.setMonth(end.getMonth() + 1);
+
+  _cachedSubscribed    = true;
+  _subscriptionEndDate = end.getTime();
+
+  // Firestore 저장 (로그인된 경우)
+  if (_firebaseUser && _fbDb) {
+    _fbDb.collection('users').doc(_firebaseUser.uid).set({
+      subscribed           : true,
+      subscriptionPlan     : plan,
+      subscriptionStartDate: firebase.firestore.FieldValue.serverTimestamp(),
+      subscriptionEndDate  : firebase.firestore.Timestamp.fromDate(end),
+    }, { merge: true }).catch(e => console.warn('구독 저장 오류:', e));
+  }
+
+  try { const d=getFreeData(); d.viewed=[]; saveFreeData(d); } catch {}
+  updateFreePill(); updateSubBtn();
   toast("구독 완료! 이제 무제한으로 볼 수 있어요 🎉");
   if(state.current){ state.deepTab="general"; syncDeepTabs(); renderDeep(); show("deep"); }
 }
@@ -1822,36 +1873,56 @@ document.getElementById("termsOverlay").addEventListener("click", e => {
 async function _syncUserFromFirebase(fbUser) {
   _firebaseUser = fbUser;
   if (!fbUser) {
-    _cachedSubscribed = false;
-    updateFreePill();
+    _cachedSubscribed    = false;
+    _subscriptionEndDate = null;
+    updateFreePill(); updateSubBtn();
     return;
   }
 
-  // Firestore에서 구독 상태 조회
+  // 관리자 이메일 → 무조건 무제한
+  if (ADMIN_EMAILS.includes(fbUser.email)) {
+    _cachedSubscribed    = true;
+    _subscriptionEndDate = null;  // null = 만료일 없음 (영구)
+    updateFreePill(); updateSubBtn();
+    // 로그인 모달 처리
+    const ov = document.getElementById('loginOverlay');
+    if (ov && ov.style.display === 'flex') {
+      document.getElementById('loginStep1').style.display = 'none';
+      document.getElementById('loginStep2').style.display = 'none';
+      document.getElementById('loginStep3').style.display = 'block';
+    }
+    return;
+  }
+
+  // Firestore에서 구독 상태 + 만료일 조회
   try {
     const docRef = _fbDb.collection('users').doc(fbUser.uid);
     const doc    = await docRef.get();
-    if (doc.exists && doc.data().subscribed === true) {
-      _cachedSubscribed = true;
+    if (doc.exists) {
+      const d = doc.data();
+      const endTs = d.subscriptionEndDate?.toDate?.();
+      const isActive = d.subscribed === true && (!endTs || endTs > new Date());
+      _cachedSubscribed    = isActive;
+      _subscriptionEndDate = endTs ? endTs.getTime() : null;
     } else {
-      _cachedSubscribed = false;
+      _cachedSubscribed    = false;
+      _subscriptionEndDate = null;
       // 첫 로그인: 사용자 문서 생성
-      if (!doc.exists) {
-        await docRef.set({
-          displayName : fbUser.displayName || '',
-          email       : fbUser.email || '',
-          provider    : (fbUser.providerData[0]?.providerId || ''),
-          createdAt   : firebase.firestore.FieldValue.serverTimestamp(),
-          subscribed  : false,
-        }, { merge: true });
-      }
+      await docRef.set({
+        displayName : fbUser.displayName || '',
+        email       : fbUser.email || '',
+        provider    : (fbUser.providerData[0]?.providerId || ''),
+        createdAt   : firebase.firestore.FieldValue.serverTimestamp(),
+        subscribed  : false,
+      }, { merge: true });
     }
   } catch(e) {
     console.warn('Firestore sync error:', e);
-    _cachedSubscribed = false;
+    _cachedSubscribed    = false;
+    _subscriptionEndDate = null;
   }
 
-  updateFreePill();
+  updateFreePill(); updateSubBtn();
 
   // 로그인 모달이 열려 있으면 → 닉네임 단계 건너뛰고 완료 화면으로
   const overlay = document.getElementById('loginOverlay');

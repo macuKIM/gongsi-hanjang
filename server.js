@@ -1099,7 +1099,9 @@ app.get('/api/summarize-stream', async (req, res) => {
       try {
         const decoded  = await _fbAuth.verifyIdToken(idToken);
         const userDoc  = await _fbDb.collection('users').doc(decoded.uid).get();
-        const subscribed = userDoc.exists && userDoc.data().subscribed === true;
+        const data     = userDoc.exists ? userDoc.data() : {};
+        const endDate  = data.subscriptionEndDate?.toDate?.();
+        const subscribed = data.subscribed === true && (!endDate || endDate > new Date());
         if (!subscribed) {
           send({ type: 'error', msg: 'subscription_required' });
           return res.end();
